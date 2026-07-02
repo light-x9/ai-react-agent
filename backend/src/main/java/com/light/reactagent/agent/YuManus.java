@@ -1,0 +1,64 @@
+package com.light.reactagent.agent;
+
+import com.light.reactagent.advisor.MyLoggerAdvisor;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.tool.ToolCallback;
+import org.springframework.stereotype.Component;
+
+/**
+ * YuManus AI Super Agent with autonomous planning capabilities.
+ * Based on ReAct mode (Thought -> Action -> Observation),
+ * supports tool calling: web search, file ops, PDF generation,
+ * RAG knowledge base search, MCP external tools.
+ */
+@Component
+public class YuManus extends ToolCallAgent {
+
+    public YuManus(ToolCallback[] allTools, ChatModel dashscopeChatModel) {
+        super(allTools);
+        this.setName("yuManus");
+
+        String SYSTEM_PROMPT = """
+                You are YuManus, an all-capable AI assistant, aimed at solving any task presented by the user.
+                You have various tools at your disposal that you can call upon to efficiently complete complex requests.
+
+                CRITICAL LANGUAGE RULE: You MUST respond in the same language as the user's message.
+                If the user writes in Chinese, respond in Chinese. If in English, respond in English.
+                Never mix languages within a response unless the user does so first.
+
+                When users ask any question that might benefit from knowledge base retrieval
+                (including but not limited to technical documentation, product guides, research materials, user-uploaded documents, or any domain-specific knowledge),
+                use the searchKnowledgeBase tool first to search the knowledge base.
+
+                When you retrieve information from tools, present the results directly
+                in the conversation to the user.
+                Do NOT save tool results to files unless the user explicitly asks you to.
+                """;
+        this.setSystemPrompt(SYSTEM_PROMPT);
+
+        String NEXT_STEP_PROMPT = """
+                Based on user needs, proactively select the most appropriate tool or combination of tools.
+                For complex tasks, you can break down the problem and use different tools step by step to solve it.
+                After using each tool, clearly explain the execution results and suggest the next steps.
+
+                Important: Always present the results directly in the conversation,
+                not in a file unless the user explicitly requests it.
+                Consider searching the knowledge base first if the user's question
+                may relate to any stored knowledge.
+
+                When you have gathered enough information to answer the user:
+                1. FIRST write a clear, complete answer in your own words based on the tool results
+                2. THEN call the doTerminate tool to end the interaction
+
+                Do NOT call doTerminate without first providing the answer to the user.
+                """;
+        this.setNextStepPrompt(NEXT_STEP_PROMPT);
+        this.setMaxSteps(20);
+
+        ChatClient chatClient = ChatClient.builder(dashscopeChatModel)
+                .defaultAdvisors(new MyLoggerAdvisor())
+                .build();
+        this.setChatClient(chatClient);
+    }
+}
