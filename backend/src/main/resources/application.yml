@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: react-agent
+  profiles:
+    active: local
+
+  ai:
+    dashscope:
+
+      chat:
+        options:
+          model: qwen-turbo
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        model: gemma3:1b
+
+server:
+  port: 8123
+  servlet:
+    context-path: /api
+    encoding:
+      charset: UTF-8
+      force: true
+# springdoc-openapi config
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  group-configs:
+    - group: 'default'
+      paths-to-match: '/**'
+      packages-to-scan: com.light.reactagent.controller
+# knife4j config
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+# 修改日志级别，查看 Spring AI 更多调用细节
+logging:
+  level:
+    org.springframework.ai: DEBUG
