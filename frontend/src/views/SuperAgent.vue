@@ -112,6 +112,9 @@ import { useHead } from '@vueuse/head'
 import ChatRoom from '../components/ChatRoom.vue'
 import AppFooter from '../components/AppFooter.vue'
 import { chatWithManus, uploadKnowledgeBase, listKnowledgeFiles, deleteKnowledgeFile } from '../api'
+import { connectSSE } from '../api'
+const USE_MOCK = false  // true=Mock演示, false=真实后端
+
 
 useHead({
   title: '超级智能体 - YuPi AI',
@@ -122,6 +125,8 @@ const router = useRouter()
 const messages = ref([])
 const connectionStatus = ref('disconnected')
 let eventSource = null
+// 会话 ID：同一页面窗口内保持不变，后端据此维护多轮对话记忆
+const chatId = Date.now().toString(36)
 
 // ========== Upload ==========
 const fileInput = ref(null)
@@ -252,9 +257,37 @@ const sendMessage = (message) => {
 
   connectionStatus.value = 'connecting'
 
-  // 根据用户问题动态生成与该问题相关的 mock 推理场景
-  const scenario = buildMockScenario(message)
-  runMockReActStream(aiMessageIndex, scenario)
+  if (USE_MOCK) {
+    const scenario = buildMockScenario(message)
+    runMockReActStream(aiMessageIndex, scenario)
+  } else {
+    // 构建历史上下文：取最近6轮对话
+      const historyMessages = messages.value.slice(-6);
+      const historyText = historyMessages
+        .filter(m => m.content && !m.type)
+        .map(m => (m.isUser ? 'User: ' : 'Assistant: ') + m.content)
+        .join('\n');
+
+      eventSource = connectSSE('/ai/manus/chat', { message, history: historyText },
+      (data) => {
+        if (data === '[DONE]') {
+          connectionStatus.value = 'disconnected'
+          if (eventSource) { eventSource.close(); eventSource = null }
+          return
+        }
+        messages.value[aiMessageIndex].content += data
+      },
+      () => {
+                // EventSource 流正常结束也会触发 onerror（浏览器行为）
+        // 有数据 = 正常完成，无数据 = 真错误
+        if (!messages.value[aiMessageIndex].content) {
+          messages.value[aiMessageIndex].content = '连接失败，请检查后端是否已启动。'
+        }
+        connectionStatus.value = 'disconnected'
+        if (eventSource) { eventSource.close(); eventSource = null }
+      }
+    )
+  }
 }
 
 // ---------- 根据用户问题动态生成 mock 推理内容 ----------
