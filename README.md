@@ -5,9 +5,15 @@
 
 ---
 
+## 截图
+
+> 待添加项目截图（首页、智能体对话界面、工具调用推理步骤可视化等）
+
+---
+
 ## 功能亮点
 
-- **ReAct 推理循环** — Thought → Action → Observation 多步推理链路，工具调用与思考交替进行
+- **ReAct 推理循环** — Thought -> Action -> Observation 多步推理链路，工具调用与思考交替进行
 - **多工具协同** — 联网搜索、图片搜索、高德地图、PDF 生成、文件操作等 10+ 工具
 - **RAG 知识库** — 基于 PGvector 的向量检索，支持文档上传与语义搜索
 - **流式响应** — 基于 SSE（Server-Sent Events）实时推送推理步骤
@@ -20,14 +26,14 @@
 
 ### 智能体层级
 
-
-`
+```
 BaseAgent -> ReActAgent -> ToolCallAgent -> LightManus
-`
-- BaseAgent：状态机管理（IDLE - RUNNING - FINISHED/ERROR），SSE 流式推送
-- ReActAgent：定义 think/act 循环抽象
-- ToolCallAgent：执行 LLM 工具调用，处理工具结果
-- LightManus：最终实例，注入所有工具
+```
+
+- **BaseAgent**：状态机管理（IDLE - RUNNING - FINISHED/ERROR），SSE 流式推送
+- **ReActAgent**：定义 think/act 循环抽象
+- **ToolCallAgent**：执行 LLM 工具调用，处理工具结果
+- **LightManus**：最终实例，注入所有工具，面向用户交互
 
 ### 工具系统
 
@@ -38,9 +44,9 @@ BaseAgent -> ReActAgent -> ToolCallAgent -> LightManus
 | searchWeb | 联网搜索信息 | SearchAPI |
 | searchImage | 搜索图片 | Pexels |
 | queryWeather | 查询城市实时天气 | 高德地图 |
-| searchPoi | 搜索地点（景点、餐厅等）| 高德地图 |
+| searchPoi | 搜索地点（景点、餐厅等） | 高德地图 |
 | scrapeWebPage | 抓取网页内容 | Jsoup |
-| readFile/writeFile | 文件读写 | - |
+| readFile / writeFile | 文件读写 | - |
 | downloadResource | 下载远程资源 | Hutool |
 | generatePDF | 生成 PDF 文件 | iText |
 | executeTerminalCommand | 执行终端命令 | - |
@@ -49,7 +55,7 @@ BaseAgent -> ReActAgent -> ToolCallAgent -> LightManus
 
 ### 数据流
 
-`
+```
 用户 -> 前端 Vue 3 -> SSE -> AiAgentController -> LightManus
                                                      |
                                            think() 循环
@@ -62,7 +68,7 @@ BaseAgent -> ReActAgent -> ToolCallAgent -> LightManus
                                                流式推送 SSE
                                                      |
                                               前端实时展示推理步骤
-`
+```
 
 ---
 
@@ -85,8 +91,8 @@ BaseAgent -> ReActAgent -> ToolCallAgent -> LightManus
 
 前端基于 Vue 3 + Vite 构建，包含两个主要页面：
 
-- **首页（Home.vue）** -- 项目介绍、功能展示卡片、快速入口
-- **智能体页面（SuperAgent.vue）** -- 核心聊天界面
+- **首页（Home.vue）** — 项目介绍、功能展示卡片、快速入口
+- **智能体页面（SuperAgent.vue）** — 核心聊天界面
 
 ### 核心组件
 
@@ -118,14 +124,14 @@ BaseAgent -> ReActAgent -> ToolCallAgent -> LightManus
 
 ### 1. 克隆项目
 
-`ash
+```bash
 git clone https://github.com/light-x9/ai-react-agent.git
 cd ai-react-agent
-`
+```
 
 ### 2. 启动后端
 
-`ash
+```bash
 cd backend
 # 配置 application-local.yml 中的数据库连接
 # 设置环境变量
@@ -133,17 +139,17 @@ set DASHSCOPE_API_KEY=your-dashscope-api-key
 set PEXELS_API_KEY=your-pexels-api-key
 # 启动
 ./mvnw spring-boot:run
-`
+```
 
 后端运行在 http://localhost:8123/api
 
 ### 3. 启动前端
 
-`ash
+```bash
 cd frontend
 npm install
 npm run dev
-`
+```
 
 前端运行在 http://localhost:3005
 
@@ -151,7 +157,7 @@ npm run dev
 
 ## 项目结构
 
-`
+```
 ai-react-agent/
 ├── backend/           # Spring Boot 后端
 │   ├── agent/         # 智能体核心（分层架构）
@@ -165,11 +171,11 @@ ai-react-agent/
 ├── frontend/          # Vue 3 前端
 │   └── src/
 │       ├── api/       # API 层
-│       ├── components/# 组件
+│       ├── components/  # 组件
 │       ├── views/     # 页面
 │       └── router/    # 路由
 └── search-mcp-server/ # 图片搜索 MCP Server
-`
+```
 
 ---
 
@@ -199,22 +205,16 @@ ai-react-agent/
 
 ## 部署
 
-`ash
+```bash
 # 后端
 cd backend && ./mvnw clean package -DskipTests
 java -jar target/react-agent-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod
 
 # 前端
 cd frontend && npm run build
-`
+```
 
 参考 frontend/nginx.conf 配置 Nginx 反向代理。
-
----
-
-## 截图
-
-> 待添加项目截图（首页、智能体对话界面、工具调用推理步骤可视化等）
 
 ---
 
