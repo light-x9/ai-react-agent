@@ -4,13 +4,32 @@
 > 智能体可自主推理、调用多种工具完成复杂任务，支持流式响应与知识库检索。
 
 ---
-
 ## 截图
 
-> 待添加项目截图（首页、智能体对话界面、工具调用推理步骤可视化等）
+### 🏠 首页
+智能体应用入口,展示对话交互界面与基础功能导航。
+<img width="1496" height="1303" alt="屏幕截图 2026-07-04 154218" src="https://github.com/user-attachments/assets/f0fc0483-dc8c-42c9-8a05-88ac1ebdc3ef" />
 
----
 
+
+### 💬 智能体对话界面
+支持多轮连续对话,基于会话 ID 持久化上下文;调用外部工具（联网搜索、地图、PDF生成等10+工具）完成复杂任务,回复内容通过 SSE 流式推送。
+
+<img width="1508" height="1218" alt="屏幕截图 2026-07-04 201446" src="https://github.com/user-attachments/assets/e27645bd-7019-4c65-abce-570146573c36" />
+
+
+<img width="1508" height="1218" alt="屏幕截图 2026-07-04 201446" src="https://github.com/user-attachments/assets/a89be537-4f60-464e-ba09-07a698c72135" />
+
+
+
+### 📚 知识库检索
+支持上传文档构建个人知识库,基于 PGvector 向量数据库实现语义搜索,智能体可结合知识库内容回答问题,而非仅依赖通用知识。
+<img width="497" height="321" alt="屏幕截图 2026-07-04 201639" src="https://github.com/user-attachments/assets/79aef1b8-23c6-476f-942f-8da268513244" />
+
+<img width="1487" height="908" alt="屏幕截图 2026-07-04 201943" src="https://github.com/user-attachments/assets/cef2585c-2f92-4ee6-85a2-8f2652845af8" />
+
+
+<img ... alt="知识库检索" />
 ## 功能亮点
 
 - **ReAct 推理循环** — Thought -> Action -> Observation 多步推理链路，工具调用与思考交替进行
