@@ -21,20 +21,22 @@ public class ToolRegistration {
     // 使用 ObjectProvider 延迟获取 MCP 工具，避免 MCP 服务不可用时阻塞启动
     private final ObjectProvider<ToolCallbackProvider> toolCallbackProvider;
 
-    /**
-     * RAG 知识库检索工具（Spring 自动注入）
-     * 智能体可通过此工具从向量知识库中检索恋爱/情感相关的专业知识
-     */
     private final RagSearchTool ragSearchTool;
+    private final ImageSearchTool imageSearchTool;
+    private final AmapTool amapTool;
 
     public ToolRegistration(ObjectProvider<ToolCallbackProvider> toolCallbackProvider,
-                            RagSearchTool ragSearchTool) {
+                            RagSearchTool ragSearchTool,
+                            ImageSearchTool imageSearchTool,
+                            AmapTool amapTool) {
         this.toolCallbackProvider = toolCallbackProvider;
         this.ragSearchTool = ragSearchTool;
+        this.imageSearchTool = imageSearchTool;
+        this.amapTool = amapTool;
     }
 
     /**
-     * 本地工具集：包含文件操作、网页搜索、PDF生成、RAG检索等
+     * 本地工具集：包含文件操作、网页搜索、PDF生成、RAG检索、图片搜索、高德地图等
      */
     @Bean
     public ToolCallback[] allTools() {
@@ -53,11 +55,13 @@ public class ToolRegistration {
                 terminalOperationTool,
                 pdfGenerationTool,
                 terminateTool,
-                ragSearchTool   // RAG 知识库检索工具，供智能体按需调用
+                ragSearchTool,       // RAG 知识库检索
+                imageSearchTool,     // 图片搜索（Pexels）
+                amapTool             // 高德地图（天气、地点搜索）
         );
     }
 
-    // 合并本地工具 + MCP 工具，供 SuperAgent（YuManus）使用
+    // 合并本地工具 + MCP 工具，供 SuperAgent（LightManus）使用
     // 如果 MCP 未配置或不可用，自动降级为仅本地工具
     @Bean
     public ToolCallback[] allToolsWithMcp() {

@@ -1,6 +1,6 @@
 package com.light.reactagent.controller;
 
-import com.light.reactagent.agent.YuManus;
+import com.light.reactagent.agent.LightManus;
 import jakarta.annotation.Resource;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.model.ChatModel;
@@ -36,14 +36,14 @@ public class AiAgentController {
             @RequestParam String message,
             @RequestParam(required = false, defaultValue = "") String history) {
 
-        YuManus yuManus = new YuManus(allToolsWithMcp, dashscopeChatModel);
+        LightManus lightManus = new LightManus(allToolsWithMcp, dashscopeChatModel);
 
         // 将前端传来的历史消息注入Agent上下文（格式：User: xxx\nAssistant: yyy\n...）
         if (history != null && !history.isBlank()) {
             String contextMessage = "Previous conversation:\n" + history
                     + "\n\nCurrent user message: " + message;
-            return yuManus.runStream(contextMessage);
+            return lightManus.runStream(contextMessage);
         }
 
-        return yuManus.runStream(message);
+        return lightManus.runStream(message);
     }}

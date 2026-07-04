@@ -8,10 +8,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
 @SpringBootApplication
-public class YuImageSearchMcpServerApplication {
+public class ImageSearchMcpServerApplication {
 
     public static void main(String[] args) {
-        SpringApplication.run(YuImageSearchMcpServerApplication.class, args);
+        SpringApplication.run(ImageSearchMcpServerApplication.class, args);
     }
 
     @Bean

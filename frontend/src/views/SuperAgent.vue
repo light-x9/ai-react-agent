@@ -533,7 +533,7 @@ function buildKnowledgeScenario(q) {
           rawResult: JSON.stringify({
             matches: [
               { source: 'README.md', score: 0.91, snippet: `${q}相关的基础说明和快速开始指南...` },
-              { source: 'architecture.md', score: 0.82, snippet: `系统架构：ReActAgent → ToolCallAgent → YuManus...` }
+              { source: 'architecture.md', score: 0.82, snippet: `系统架构：ReActAgent → ToolCallAgent → LightManus...` }
             ]
           }, null, 2)
         }

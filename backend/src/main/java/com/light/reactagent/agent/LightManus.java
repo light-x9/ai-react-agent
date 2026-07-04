@@ -7,20 +7,20 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.stereotype.Component;
 
 /**
- * YuManus AI Super Agent with autonomous planning capabilities.
+ * LightManus AI Super Agent with autonomous planning capabilities.
  * Based on ReAct mode (Thought -> Action -> Observation),
  * supports tool calling: web search, file ops, PDF generation,
  * RAG knowledge base search, MCP external tools.
  */
 @Component
-public class YuManus extends ToolCallAgent {
+public class LightManus extends ToolCallAgent {
 
-    public YuManus(ToolCallback[] allTools, ChatModel dashscopeChatModel) {
+    public LightManus(ToolCallback[] allTools, ChatModel dashscopeChatModel) {
         super(allTools);
         this.setName("yuManus");
 
         String SYSTEM_PROMPT = """
-                You are YuManus, an all-capable AI assistant, aimed at solving any task presented by the user.
+                You are LightManus, an all-capable AI assistant, aimed at solving any task presented by the user.
                 You have various tools at your disposal that you can call upon to efficiently complete complex requests.
 
                 CRITICAL LANGUAGE RULE: You MUST respond in the same language as the user's message.
