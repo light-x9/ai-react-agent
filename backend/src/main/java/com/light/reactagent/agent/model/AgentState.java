@@ -1,27 +1,27 @@
 package com.light.reactagent.agent.model;
 
 /**
- * 浠ｇ悊鎵ц鐘舵€佺殑鏋氫妇绫?
+ * 代理执行状态的枚举类
  */
 public enum AgentState {
 
     /**
-     * 绌洪棽鐘舵€?
+     * 空闲状态
      */
     IDLE,
 
     /**
-     * 杩愯涓姸鎬?
+     * 运行中状态
      */
     RUNNING,
 
     /**
-     * 宸插畬鎴愮姸鎬?
+     * 已完成状态
      */
     FINISHED,
 
     /**
-     * 閿欒鐘舵€?
+     * 错误状态
      */
     ERROR
 }

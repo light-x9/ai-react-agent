@@ -11,8 +11,8 @@ import org.springframework.ai.chat.client.advisor.api.StreamAdvisorChain;
 import reactor.core.publisher.Flux;
 
 /**
- * 鑷畾涔夋棩蹇?Advisor
- * 鎵撳嵃 info 绾у埆鏃ュ織銆佸彧杈撳嚭鍗曟鐢ㄦ埛鎻愮ず璇嶅拰 AI 鍥炲鐨勬枃鏈?
+ * ????? Advisor
+ * ?? info ???????????????? AI ?????
  */
 @Slf4j
 public class MyLoggerAdvisor implements CallAdvisor, StreamAdvisor {
