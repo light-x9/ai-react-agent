@@ -91,7 +91,7 @@
     <div class="content-wrapper">
       <div class="chat-area">
         <ChatRoom 
-          :messages="messages" 
+          :messages="chatStore.activeMessages" 
           :connection-status="connectionStatus"
           ai-type="super"
           @send-message="sendMessage"
@@ -109,6 +109,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@vueuse/head'
+import { useChatStore } from '@/stores/chatStore'
 import ChatRoom from '../components/ChatRoom.vue'
 import AppFooter from '../components/AppFooter.vue'
 import { chatWithManus, uploadKnowledgeBase, listKnowledgeFiles, deleteKnowledgeFile } from '../api'
@@ -122,7 +123,7 @@ useHead({
 })
 
 const router = useRouter()
-const messages = ref([])
+const chatStore = useChatStore()
 const connectionStatus = ref('disconnected')
 let eventSource = null
 // 会话 ID：同一页面窗口内保持不变，后端据此维护多轮对话记忆
@@ -156,7 +157,7 @@ const handleFileUpload = async (event) => {
     const result = await uploadKnowledgeBase(file)
     uploadMsg.value = result.message
     if (result.success) {
-      addMessage('知识库上传成功：' + result.message, false, 'system')
+      chatStore.addMessageToActive('知识库上传成功：' + result.message, false, 'system')
     }
   } catch (err) {
     uploadMsg.value = '上传失败：' + (err.response?.data?.message || err.message)
@@ -207,7 +208,7 @@ const doDelete = async () => {
     const result = await deleteKnowledgeFile(deleteTarget.value)
     if (result.success) {
       uploadedFiles.value = uploadedFiles.value.filter(f => f.source !== deleteTarget.value)
-      addMessage('已删除：' + result.message, false, 'system')
+      chatStore.addMessageToActive('已删除：' + result.message, false, 'system')
     }
   } catch (err) {
     console.error('Delete failed', err)
@@ -217,18 +218,6 @@ const doDelete = async () => {
 }
 
 // ========== Chat ==========
-const addMessage = (content, isUser, type = '', extra = {}) => {
-  messages.value.push({
-    content,
-    isUser,
-    type,
-    time: new Date().getTime(),
-    // ReAct 相关字段
-    reactCycles: extra.reactCycles || [],
-    finalAnswer: extra.finalAnswer || '',
-    _cycleIndex: extra._cycleIndex || 0
-  })
-}
 
 /**
  * 模拟结构化 ReAct 渐进流式输出
@@ -244,12 +233,12 @@ const addMessage = (content, isUser, type = '', extra = {}) => {
  * 在 onmessage 中根据 event.data 的 type 字段调用对应函数即可。
  */
 const sendMessage = (message) => {
-  addMessage(message, true)
+  chatStore.addMessageToActive(message, true)
   if (eventSource) eventSource.close()
 
   // 创建 AI 消息骨架
-  const aiMessageIndex = messages.value.length
-  addMessage('', false, '', {
+  const aiMessageIndex = chatStore.activeMessages.length
+  chatStore.addMessageToActive('', false, '', {
     reactCycles: [],
     finalAnswer: '',
     _cycleIndex: 0
@@ -262,7 +251,7 @@ const sendMessage = (message) => {
     runMockReActStream(aiMessageIndex, scenario)
   } else {
     // 构建历史上下文：取最近6轮对话
-      const historyMessages = messages.value.slice(-6);
+      const historyMessages = chatStore.activeMessages.slice(-6);
       const historyText = historyMessages
         .filter(m => m.content && !m.type)
         .map(m => (m.isUser ? 'User: ' : 'Assistant: ') + m.content)
@@ -275,13 +264,13 @@ const sendMessage = (message) => {
           if (eventSource) { eventSource.close(); eventSource = null }
           return
         }
-        messages.value[aiMessageIndex].content += data
+        chatStore.activeMessages[aiMessageIndex].content += data
       },
       () => {
                 // EventSource 流正常结束也会触发 onerror（浏览器行为）
         // 有数据 = 正常完成，无数据 = 真错误
-        if (!messages.value[aiMessageIndex].content) {
-          messages.value[aiMessageIndex].content = '连接失败，请检查后端是否已启动。'
+        if (!chatStore.activeMessages[aiMessageIndex].content) {
+          chatStore.activeMessages[aiMessageIndex].content = '连接失败，请检查后端是否已启动。'
         }
         connectionStatus.value = 'disconnected'
         if (eventSource) { eventSource.close(); eventSource = null }
@@ -545,7 +534,7 @@ function buildKnowledgeScenario(q) {
 
 // 异步模拟 ReAct 渐进流式输出
 async function runMockReActStream(msgIndex, scenario) {
-  const msg = () => messages.value[msgIndex]
+  const msg = () => chatStore.activeMessages[msgIndex]
   const delay = (ms) => new Promise(r => setTimeout(r, ms))
 
   msg().reactCycles = []
@@ -596,7 +585,14 @@ async function runMockReActStream(msgIndex, scenario) {
 const goBack = () => router.push('/')
 
 onMounted(() => {
-  addMessage('你好，我是 AI 超级智能体。我能搜索网页、调用工具、管理知识库，帮你完成复杂任务。上传 .txt/.md 文件可建立专属知识库，有问必答。', false)
+  // 确保有激活的会话（首次加载或 localStorage 为空时自动创建）
+  if (!chatStore.currentSession) {
+    chatStore.createSession()
+  }
+  // 仅在新会话时显示欢迎语，切回来的会话保留原有消息
+  if (chatStore.activeMessages.length === 0) {
+    chatStore.addMessageToActive('你好，我是 AI 超级智能体。我能搜索网页、调用工具、管理知识库，帮你完成复杂任务。上传 .txt/.md 文件可建立专属知识库，有问必答。', false)
+  }
 })
 
 onBeforeUnmount(() => {
