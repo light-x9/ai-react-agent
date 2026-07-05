@@ -47,3 +47,5 @@ backend/src/main/resources/mcp-servers.json
 # Project specific
 backend/HELP.md
 frontend/src/mock-react-data.js
+# Personal workbuddy logs (not project code)
+.workbuddy/
