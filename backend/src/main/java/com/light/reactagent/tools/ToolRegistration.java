@@ -18,6 +18,13 @@ public class ToolRegistration {
     @Value("${search-api.api-key}")
     private String searchApiKey;
 
+    /**
+     * 终端工具开关：默认开启以保持现有能力，生产环境可通过
+     * lightmanus.tool.terminal.enabled=false 关闭（推荐生产关闭）
+     */
+    @Value("${lightmanus.tool.terminal.enabled:true}")
+    private boolean terminalEnabled;
+
     // 使用 ObjectProvider 延迟获取 MCP 工具，避免 MCP 服务不可用时阻塞启动
     private final ObjectProvider<ToolCallbackProvider> toolCallbackProvider;
 
@@ -44,7 +51,8 @@ public class ToolRegistration {
         WebSearchTool webSearchTool = new WebSearchTool(searchApiKey);
         WebScrapingTool webScrapingTool = new WebScrapingTool();
         ResourceDownloadTool resourceDownloadTool = new ResourceDownloadTool();
-        TerminalOperationTool terminalOperationTool = new TerminalOperationTool();
+        // 终端工具：按配置决定是否启用安全加固版（黑名单 + 沙箱 + 超时）
+        TerminalOperationTool terminalOperationTool = new TerminalOperationTool(terminalEnabled);
         PDFGenerationTool pdfGenerationTool = new PDFGenerationTool();
         TerminateTool terminateTool = new TerminateTool();
         return ToolCallbacks.from(

@@ -44,3 +44,11 @@ knife4j:
 logging:
   level:
     org.springframework.ai: DEBUG
+
+# LightManus 工具安全配置
+lightmanus:
+  tool:
+    terminal:
+      # 终端工具开关：默认开启以保持 Agent 命令执行能力
+      # 生产环境强烈建议设为 false，或仅在受控内网场景开启
+      enabled: true
