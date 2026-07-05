@@ -49,3 +49,9 @@ backend/HELP.md
 frontend/src/mock-react-data.js
 # Personal workbuddy logs (not project code)
 .workbuddy/
+
+# Vite cache
+frontend/.vite/
+
+# Maven timing data (generated at runtime)
+backend/.mvn/timing/
