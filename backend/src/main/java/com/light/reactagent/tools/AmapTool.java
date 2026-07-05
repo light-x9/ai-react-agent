@@ -32,7 +32,7 @@ public class AmapTool {
      * @param city 城市名，如"杭州"、"北京"
      * @return 天气信息文本
      */
-    @Tool(description = "Query real-time weather for a city using Amap")
+    @Tool(description = "查询城市实时天气（高德地图）。输入城市名如「杭州」「北京」。适用于「XX天气怎么样」类问题。")
     public String queryWeather(
             @ToolParam(description = "City name, e.g. 'Hangzhou', 'Beijing'") String city) {
         try {
@@ -74,7 +74,7 @@ public class AmapTool {
      * @param city 城市名（可选），限制搜索范围
      * @return 地点列表
      */
-    @Tool(description = "Search points of interest (POI) near a location using Amap")
+    @Tool(description = "搜索地点/周边设施（POI，高德地图）：可查地铁口、公交站、餐厅、景点、医院、酒店、ATM、停车场等。适用于「XX周围有什么」「XX附近有几个YY」「找附近的ZZ」类地理问题。")
     public String searchPoi(
             @ToolParam(description = "Search keywords, e.g. 'West Lake', 'restaurant'") String keywords,
             @ToolParam(description = "City name to narrow search, e.g. 'Hangzhou'. Optional, can be empty") String city) {

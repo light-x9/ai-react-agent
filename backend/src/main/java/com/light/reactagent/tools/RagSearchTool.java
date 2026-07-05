@@ -45,7 +45,7 @@ public class RagSearchTool {
      * @param query user's original question
      * @return search results or fallback message
      */
-    @Tool(description = "Search knowledge base for relevant info. Use when user asks about topics that may be covered in uploaded documents or built-in knowledge.")
+    @Tool(description = "Search the user-uploaded knowledge base documents ONLY. Use ONLY when the question is about content the user uploaded (.txt/.md files) or built-in docs. NOT for general-world questions like geography, weather, or real-time info — use searchWeb or the map tool for those instead.")
     public String searchKnowledgeBase(
             @ToolParam(description = "User query to search in knowledge base")
             String query) {
@@ -63,7 +63,7 @@ public class RagSearchTool {
 
         // Step 3: Format results
         if (similarDocuments.isEmpty()) {
-            return "No relevant info found in knowledge base. You MUST now answer the user directly using your own knowledge. Do NOT terminate - provide a helpful response.";
+            return "No relevant info found in the knowledge base. The knowledge base only contains user-uploaded documents. For this question, try a different tool: use the map tool (searchPoi / amap) for geographic or location questions, or searchWeb for general or real-time info. Do NOT give up — switch tools.";
         }
 
         return "Retrieved from knowledge base:\n\n"
