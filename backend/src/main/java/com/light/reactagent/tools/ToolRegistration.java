@@ -8,50 +8,67 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 集中的工具注册类
- * 负责创建所有本地工具实例，并合并 MCP 外部工具，供 SuperAgent 使用
+ * <p>
+ * allTools()/allToolsWithMcp() 提供全量工具（兼容旧路径）。
+ * buildToolSet(webSearch, knowledgeBase) 按能力开关动态装配工具子集，供能力开关模式使用。
  */
 @Configuration
 public class ToolRegistration {
 
-    @Value("${search-api.api-key}")
-    private String searchApiKey;
-
-    /**
-     * 终端工具开关：默认开启以保持现有能力，生产环境可通过
-     * lightmanus.tool.terminal.enabled=false 关闭（推荐生产关闭）
-     */
     @Value("${lightmanus.tool.terminal.enabled:true}")
     private boolean terminalEnabled;
 
-    // 使用 ObjectProvider 延迟获取 MCP 工具，避免 MCP 服务不可用时阻塞启动
     private final ObjectProvider<ToolCallbackProvider> toolCallbackProvider;
-
     private final RagSearchTool ragSearchTool;
     private final ImageSearchTool imageSearchTool;
     private final AmapTool amapTool;
+    private final WebSearchTool webSearchTool;
 
     public ToolRegistration(ObjectProvider<ToolCallbackProvider> toolCallbackProvider,
                             RagSearchTool ragSearchTool,
                             ImageSearchTool imageSearchTool,
-                            AmapTool amapTool) {
+                            AmapTool amapTool,
+                            WebSearchTool webSearchTool) {
         this.toolCallbackProvider = toolCallbackProvider;
         this.ragSearchTool = ragSearchTool;
         this.imageSearchTool = imageSearchTool;
         this.amapTool = amapTool;
+        this.webSearchTool = webSearchTool;
     }
 
     /**
-     * 本地工具集：包含文件操作、网页搜索、PDF生成、RAG检索、图片搜索、高德地图等
+     * 按能力开关动态装配工具子集
+     * - 常驻 TerminateTool（控制 ReAct 流程终止）
+     * - 开网页搜索：WebSearchTool + WebScrapingTool
+     * - 开知识库：RagSearchTool
+     * - 纯对话（都不开）：仅 TerminateTool，无外部工具
+     */
+    public ToolCallback[] buildToolSet(boolean webSearch, boolean knowledgeBase) {
+        List<Object> tools = new ArrayList<>();
+        tools.add(new TerminateTool());
+        if (webSearch) {
+            tools.add(webSearchTool);
+            tools.add(new WebScrapingTool());
+        }
+        if (knowledgeBase) {
+            tools.add(ragSearchTool);
+        }
+        return ToolCallbacks.from(tools.toArray());
+    }
+
+    /**
+     * 全量本地工具集（兼容旧路径）
      */
     @Bean
     public ToolCallback[] allTools() {
         FileOperationTool fileOperationTool = new FileOperationTool();
-        WebSearchTool webSearchTool = new WebSearchTool(searchApiKey);
         WebScrapingTool webScrapingTool = new WebScrapingTool();
         ResourceDownloadTool resourceDownloadTool = new ResourceDownloadTool();
-        // 终端工具：按配置决定是否启用安全加固版（黑名单 + 沙箱 + 超时）
         TerminalOperationTool terminalOperationTool = new TerminalOperationTool(terminalEnabled);
         PDFGenerationTool pdfGenerationTool = new PDFGenerationTool();
         TerminateTool terminateTool = new TerminateTool();
@@ -63,14 +80,12 @@ public class ToolRegistration {
                 terminalOperationTool,
                 pdfGenerationTool,
                 terminateTool,
-                ragSearchTool,       // RAG 知识库检索
-                imageSearchTool,     // 图片搜索（Pexels）
-                amapTool             // 高德地图（天气、地点搜索）
+                ragSearchTool,
+                imageSearchTool,
+                amapTool
         );
     }
 
-    // 合并本地工具 + MCP 工具，供 SuperAgent（LightManus）使用
-    // 如果 MCP 未配置或不可用，自动降级为仅本地工具
     @Bean
     public ToolCallback[] allToolsWithMcp() {
         ToolCallback[] localTools = allTools();
@@ -81,7 +96,7 @@ public class ToolRegistration {
                 return ToolCallbacks.from(localTools, mcpTools);
             }
         } catch (Exception e) {
-            // MCP 服务不可用时，降级为仅本地工具
+            // MCP 不可用，降级为仅本地工具
         }
         return localTools;
     }
