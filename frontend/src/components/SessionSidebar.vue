@@ -248,6 +248,7 @@ const cancelRename = () => {
 }
 
 const logout = () => {
+  chatStore.reset()
   userStore.logout()
   router.push('/login')
 }

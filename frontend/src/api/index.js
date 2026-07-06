@@ -25,6 +25,7 @@ request.interceptors.response.use(
     if (err.response && err.response.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('username')
+      localStorage.removeItem('react-agent-chat')
       if (window.location.pathname !== '/login') {
         window.location.href = '/login'
       }
@@ -70,6 +71,7 @@ export const connectSSE = (url, body, onMessage, onError) => {
       if (response.status === 401) {
         localStorage.removeItem('token')
         localStorage.removeItem('username')
+        localStorage.removeItem('react-agent-chat')
         window.location.href = '/login'
         return
       }

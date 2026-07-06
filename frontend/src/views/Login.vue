@@ -156,6 +156,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useHead } from '@vueuse/head'
 import { login, register } from '../api'
 import { useUserStore } from '../stores/userStore'
+import { useChatStore } from '../stores/chatStore'
 
 useHead({
   title: '登录 - AI 超级智能体',
@@ -165,6 +166,7 @@ useHead({
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const chatStore = useChatStore()
 
 const mode = ref('login') // login | register
 const loading = ref(false)
@@ -207,8 +209,9 @@ const handleSubmit = async () => {
     const apiFn = mode.value === 'login' ? login : register
     const res = await apiFn(form.username, form.password)
     if (res.success) {
+      chatStore.reset()
       userStore.setAuth(res.token, res.username)
-      const redirect = route.query.redirect || '/super-agent'
+      const redirect = route.query.redirect || '/'
       router.push(redirect)
     } else {
       error.value = res.message || '操作失败，请重试'

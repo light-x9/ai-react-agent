@@ -44,10 +44,24 @@ export const useChatStore = defineStore('chat', {
   actions: {
 
     /**
+     * 重置 store：清除会话列表、激活状态、初始化标志、localStorage 缓存。
+     * 用于登出 / 切换账号时防止跨用户数据泄漏。
+     */
+    reset() {
+      this.sessions = []
+      this.activeId = null
+      this.initialized = false
+      localStorage.removeItem('react-agent-chat')
+    },
+
+    /**
      * 初始化：从后端加载会话列表，选最近会话并加载消息；无会话则新建
      */
     async init() {
       if (this.initialized) return
+      // 安全网：清除可能残留的上一用户缓存（防跨账号数据泄漏）
+      this.sessions = []
+      this.activeId = null
       try {
         const res = await listConversations()
         if (res.success && res.sessions && res.sessions.length > 0) {
