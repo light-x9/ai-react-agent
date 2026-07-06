@@ -1,5 +1,7 @@
 <template>
   <div class="super-agent-container">
+    <SessionSidebar ref="sidebarRef" />
+    <div class="main-area">
     <!-- ====== Header ====== -->
     <header class="header">
       <button class="back-button" @click="goBack" aria-label="返回首页">
@@ -26,18 +28,6 @@
           </svg>
           <span>管理</span>
         </button>
-        <div class="user-menu">
-          <span class="user-avatar">{{ (userStore.username || 'U').charAt(0).toUpperCase() }}</span>
-          <span class="user-name">{{ userStore.username }}</span>
-          <button class="header-btn logout-btn" @click="logout" title="登出">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            <span>登出</span>
-          </button>
-        </div>
       </div>
     </header>
 
@@ -60,6 +50,28 @@
             <span class="modal-close" @click="showManage = false">&times;</span>
           </div>
           <div class="modal-body">
+            <div
+              class="drop-zone"
+              :class="{ active: dragOver, uploading: uploading }"
+              @click="!uploading && triggerUpload()"
+              @dragover.prevent="dragOver = true"
+              @dragleave.prevent="dragOver = false"
+              @drop.prevent="handleDrop"
+            >
+              <template v-if="!uploading">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+                </svg>
+                <p>点击或拖拽文件到此处上传</p>
+                <span class="drop-hint">支持 .txt / .md，单文件 ≤ 10MB</span>
+              </template>
+              <template v-else>
+                <div class="upload-progress">
+                  <div class="progress-bar"><div class="progress-fill" :style="{ width: uploadProgress + '%' }"></div></div>
+                  <span>上传中 {{ uploadProgress }}%</span>
+                </div>
+              </template>
+            </div>
             <div v-if="loadingFiles" class="modal-loading">加载中...</div>
             <div v-else-if="uploadedFiles.length === 0" class="modal-empty">
               暂无上传文件，点击“上传”按钮添加文档
@@ -99,14 +111,24 @@
       </div>
     </transition>
 
+    <!-- 能力提示横幅：query 消息且未开启任何检索能力时显示 -->
+    <transition name="fade">
+      <div v-if="showCapHint" class="cap-hint-banner">
+        <span>💡 检测到查询类问题，开启「网页搜索」或「知识库」可获得更准确信息</span>
+        <button class="cap-hint-btn" @click="activeCaps.webSearch = true; onCapabilityChange({ ...activeCaps }); showCapHint = false">开启网页搜索</button>
+        <button class="cap-hint-close" @click="showCapHint = false" aria-label="关闭">×</button>
+      </div>
+    </transition>
+
     <!-- ====== Chat Area ====== -->
     <div class="content-wrapper">
       <div class="chat-area">
-        <ChatRoom 
-          :messages="chatStore.activeMessages" 
+        <ChatRoom
+          :messages="chatStore.activeMessages"
           :connection-status="connectionStatus"
           ai-type="super"
           @send-message="sendMessage"
+          @capability-change="onCapabilityChange"
         />
       </div>
     </div>
@@ -114,6 +136,7 @@
     <div class="footer-container">
       <AppFooter />
     </div>
+    </div><!-- /main-area -->
   </div>
 </template>
 
@@ -124,6 +147,7 @@ import { useHead } from '@vueuse/head'
 import { useChatStore } from '@/stores/chatStore'
 import ChatRoom from '../components/ChatRoom.vue'
 import AppFooter from '../components/AppFooter.vue'
+import SessionSidebar from '../components/SessionSidebar.vue'
 import { chatWithManus, uploadKnowledgeBase, listKnowledgeFiles, deleteKnowledgeFile } from '../api'
 import { connectSSE } from '../api'
 import { useUserStore } from '@/stores/userStore'
@@ -138,24 +162,91 @@ useHead({
 
 const router = useRouter()
 const chatStore = useChatStore()
+const sidebarRef = ref(null)
 const connectionStatus = ref('disconnected')
+// 能力开关状态（由 ChatRoom toggle 上报）
+const activeCaps = ref({ webSearch: false, knowledgeBase: false })
+const onCapabilityChange = (caps) => { activeCaps.value = caps }
 let eventSource = null
 // 会话 ID：同一页面窗口内保持不变，后端据此维护多轮对话记忆
 const chatId = Date.now().toString(36)
+
+// ========== 消息意图识别（闲聊 vs 信息查询） ==========
+
+/**
+ * 疑问词 —— 句子里出现这类词，说明用户在提问，需要检索
+ */
+const QUESTION_WORDS = /什么|怎么|如何|为什么|哪(?!里)|哪里|哪儿|谁|多少|几号|几点|什么时候|多大|多远|哪些|是否|能不能|可不可以|会不会|是不是|怎么样|是什么|是啥|啥是|多少钱|几岁|多高|多重|几个|几名/
+
+/**
+ * 信息索取动词 —— 用户主动要求获取某类信息
+ */
+const INFO_VERBS = /告诉我|查一下|查询|搜索|查找|查查|介绍一下|给我|推荐|排名|榜单|攻略|教程|方法|步骤|区别|优劣|好不好|靠谱吗|值得|建议|意见|计算|换算/
+
+/**
+ * 信息名词 —— 仅当句子是「短查询」或「带问句结构」时才触发，避免被陈述句误杀
+ */
+const INFO_NOUNS = /天气|气温|温度|价格|时间|日期|新闻|资讯|数据|汇率|股票|比分|赛程|航班|火车|酒店|电影|人口|面积|历史/
+
+/**
+ * 陈述句模式：信息名词 + 描述词（真好/很热/挺贵...）→ 抒发感受，不是查询
+ * 例：今天天气真好、今天气温好高、这个房价挺贵
+ */
+const STATEMENT_AFTER_INFO_NOUN = /(天气|气温|温度|价格|股票|电影|航班|酒店)(真|很|太|挺|蛮|超|特别|好|老|蛮|还)?(高|低|贵|便宜|热|冷|好|差|糟|晴朗|糟糕|不错|行|给力|离谱|合适|难|容易|辛苦|累|舒服|爽|美|丑|快|慢|新|旧|多|少)/
+
+/**
+ * 情绪/感受词 —— 命中说明是主观抒发，即使含地名也是闲聊
+ */
+const EMOTION_WORDS = /好热|好冷|好闷|好累|好困|好饿|好热|好冷|好烦|无聊|难过|伤心|开心|高兴|无语|舒服|难受|痛苦|郁闷|焦虑|压力|烦死了|热死了|冷死了|累死了/
+
+/**
+ * 闲聊/日常词 —— 命中直接放行
+ */
+const CASUAL_WORDS = /你好|嗨|哈喽|hello|hi|hey|谢谢|感谢|多谢|嗯+|哦+|哈哈|呵呵|嘿嘿|666|牛|厉害|强|棒|不错|好的|好滴|好吧|行|收到|了解|明白|懂了|知道|早安|晚安|摸鱼|睡觉|吃饭|喝水|打游戏|上班|加班|下班|放假|周末/
+
+/**
+ * 判断消息是「信息查询」还是「闲聊/情绪」
+ * 核心原则：看句式结构 + 是否有信息索取意图，不看是否包含地名
+ * @param {string} msg - 用户消息
+ * @returns {'query'|'casual'}
+ */
+const classifyMessage = (msg) => {
+  const t = msg.trim()
+  // 1. 含问号 → 查询
+  if (/[？?]/.test(t)) return 'query'
+  // 2. 情绪感受抒发 → 闲聊（优先级高，避免"杭州好热"被误判）
+  if (EMOTION_WORDS.test(t)) return 'casual'
+  // 3. 日常问候/应答 → 闲聊
+  if (CASUAL_WORDS.test(t)) return 'casual'
+  // 4. 含疑问词（什么/怎么/哪里/多少...） → 查询
+  if (QUESTION_WORDS.test(t)) return 'query'
+  // 5. 含信息索取动词（查询/搜索/推荐...） → 查询
+  if (INFO_VERBS.test(t)) return 'query'
+  // 6. 含信息名词 + 短句（< 15 字） → 查询（如"杭州天气"、"比特币价格"）
+  //    但排除"信息名词 + 描述词"的陈述句（如"今天天气真好"、"今天气温好高"）
+  if (INFO_NOUNS.test(t) && t.length < 15 && !STATEMENT_AFTER_INFO_NOUN.test(t)) return 'query'
+  // 7. 其他 → 闲聊
+  return 'casual'
+}
+
+// 能力提示横幅（query 消息且未开启任何能力时显示）
+const showCapHint = ref(false)
+let capHintTimer = null
 
 // ========== Upload ==========
 const fileInput = ref(null)
 const uploading = ref(false)
 const uploadMsg = ref('')
 const uploadSuccess = ref(true)
+const uploadProgress = ref(0)
+const dragOver = ref(false)
 
 const triggerUpload = () => {
   if (uploading.value) return
   fileInput.value?.click()
 }
 
-const handleFileUpload = async (event) => {
-  const file = event.target.files?.[0]
+const doUpload = async (file) => {
   if (!file) return
   const ext = file.name.split('.').pop()?.toLowerCase()
   if (!['txt', 'md'].includes(ext)) {
@@ -164,14 +255,25 @@ const handleFileUpload = async (event) => {
     setTimeout(() => { uploadMsg.value = '' }, 4000)
     return
   }
+  if (file.size > 10 * 1024 * 1024) {
+    uploadMsg.value = '文件过大，上限 10MB'
+    uploadSuccess.value = false
+    setTimeout(() => { uploadMsg.value = '' }, 4000)
+    return
+  }
   uploading.value = true
-  uploadMsg.value = '正在上传处理中...'
+  uploadProgress.value = 0
+  uploadMsg.value = '正在上传：' + file.name
   uploadSuccess.value = true
   try {
-    const result = await uploadKnowledgeBase(file)
-    uploadMsg.value = result.message
+    const result = await uploadKnowledgeBase(file, (e) => {
+      if (e.total) uploadProgress.value = Math.round((e.loaded / e.total) * 100)
+    })
+    uploadMsg.value = result.success ? '上传成功：' + file.name : '上传失败：' + result.message
+    uploadSuccess.value = result.success
     if (result.success) {
       chatStore.addMessageToActive('知识库上传成功：' + result.message, false, 'system')
+      openManageDialog()
     }
   } catch (err) {
     uploadMsg.value = '上传失败：' + (err.response?.data?.message || err.message)
@@ -180,6 +282,18 @@ const handleFileUpload = async (event) => {
     uploading.value = false
     setTimeout(() => { uploadMsg.value = '' }, 4000)
   }
+}
+
+const handleFileUpload = (event) => {
+  const file = event.target.files?.[0]
+  doUpload(file)
+  if (event.target) event.target.value = ''
+}
+
+const handleDrop = (event) => {
+  dragOver.value = false
+  const file = event.dataTransfer?.files?.[0]
+  doUpload(file)
 }
 
 // ========== Manage Dialog ==========
@@ -247,8 +361,32 @@ const doDelete = async () => {
  * 在 onmessage 中根据 event.data 的 type 字段调用对应函数即可。
  */
 const sendMessage = (message) => {
+  // 前置意图校验：查询类消息 + 未开启任何检索能力 → 显示柔和提示
+  const intent = classifyMessage(message)
+  const hasAnyCap = activeCaps.value.webSearch || activeCaps.value.knowledgeBase
+  if (intent === 'query' && !hasAnyCap) {
+    showCapHint.value = true
+    // 5 秒后自动隐藏提示
+    if (capHintTimer) clearTimeout(capHintTimer)
+    capHintTimer = setTimeout(() => { showCapHint.value = false }, 5000)
+  }
+
+  // 判断是否是当前会话的首条用户消息（用于设置会话能力类型图标）
+  const isActiveSessionEmpty = chatStore.activeMessages.filter(m => m.isUser).length === 0
+
   chatStore.addMessageToActive(message, true)
   chatStore.persistMessage('user', message)
+
+  // 首条消息发送后，根据当前能力开关设置会话类型
+  if (isActiveSessionEmpty) {
+    const caps = activeCaps.value
+    let capability = 'chat'
+    if (caps.webSearch && caps.knowledgeBase) capability = 'both'
+    else if (caps.webSearch) capability = 'webSearch'
+    else if (caps.knowledgeBase) capability = 'knowledgeBase'
+    chatStore.setCapability(chatStore.activeId, capability)
+  }
+
   if (eventSource) eventSource.close()
 
   // 创建 AI 消息骨架
@@ -272,20 +410,23 @@ const sendMessage = (message) => {
         .map(m => (m.isUser ? 'User: ' : 'Assistant: ') + m.content)
         .join('\n');
 
-      eventSource = connectSSE('/ai/manus/chat', { message, history: historyText },
-      (data) => {
+      eventSource = connectSSE('/ai/manus/chat', { message, history: historyText, webSearch: activeCaps.value.webSearch, knowledgeBase: activeCaps.value.knowledgeBase },
+      // onMessage：后端每条 SST 数据 + 流结束时的 [DONE] 都走这里
+      async (data) => {
         if (data === '[DONE]') {
           connectionStatus.value = 'disconnected'
           if (eventSource) { eventSource.close(); eventSource = null }
-          chatStore.persistMessage('assistant', chatStore.activeMessages[aiMessageIndex].content)
+          // await 确保消息持久化 + 用量刷新都完成，再渲染最终状态
+          const content = chatStore.activeMessages[aiMessageIndex]?.content || ''
+          await chatStore.persistMessage('assistant', content)
+          if (sidebarRef.value) await sidebarRef.value.refreshUsage()
           return
         }
         chatStore.activeMessages[aiMessageIndex].content += data
       },
+      // 异常断开：只展示错误提示
       () => {
-                // EventSource 流正常结束也会触发 onerror（浏览器行为）
-        // 有数据 = 正常完成，无数据 = 真错误
-        if (!chatStore.activeMessages[aiMessageIndex].content) {
+        if (!chatStore.activeMessages[aiMessageIndex]?.content) {
           chatStore.activeMessages[aiMessageIndex].content = '连接失败，请检查后端是否已启动。'
         }
         connectionStatus.value = 'disconnected'
@@ -615,6 +756,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (eventSource) eventSource.close()
+  if (capHintTimer) clearTimeout(capHintTimer)
 })
 </script>
 
@@ -626,9 +768,18 @@ onBeforeUnmount(() => {
 
 .super-agent-container {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   min-height: 100vh;
   background: var(--bg-base);
+}
+
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* === Header === */
@@ -825,6 +976,69 @@ onBeforeUnmount(() => {
   color: var(--text-tertiary);
   padding: 30px 0;
 }
+
+/* ---------- 拖拽上传区 ---------- */
+.drop-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 28px 16px;
+  margin-bottom: 16px;
+  border: 2px dashed var(--border-subtle);
+  border-radius: 12px;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+.drop-zone:hover {
+  border-color: var(--border-active);
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+.drop-zone.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.drop-zone.uploading {
+  cursor: default;
+}
+.drop-zone p {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin: 0;
+}
+.drop-hint {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+.upload-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 240px;
+  font-size: 0.8125rem;
+  color: var(--accent);
+}
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-base);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #818cf8, #4f46e5);
+  border-radius: 3px;
+  transition: width 0.2s;
+}
 .modal-footer {
   padding: 12px 20px;
   border-top: 1px solid var(--border-subtle);
@@ -871,6 +1085,61 @@ onBeforeUnmount(() => {
 }
 .file-delete-btn:hover { background: rgba(239, 68, 68, 0.15); }
 .file-delete-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* === 能力提示横幅 === */
+.cap-hint-banner {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.2);
+  font-size: 0.8125rem;
+  color: #92400e;
+  max-width: 90vw;
+  animation: slideDown 0.25s ease;
+}
+.cap-hint-banner span { flex: 1; }
+.cap-hint-btn {
+  padding: 4px 12px;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  background: white;
+  color: #b45309;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.cap-hint-btn:hover { background: #fffbeb; }
+.cap-hint-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: none;
+  color: #b45309;
+  font-size: 1.25rem;
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0.7;
+  flex-shrink: 0;
+}
+.cap-hint-close:hover { opacity: 1; background: rgba(180, 83, 9, 0.1); }
+@keyframes slideDown {
+  from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
 
 /* === Modal Buttons === */
 .modal-btn {

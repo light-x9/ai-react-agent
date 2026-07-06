@@ -13,17 +13,17 @@
           <p>{{ messages[0].content }}</p>
         </div>
 
-        <!-- 能力小组件 -->
+        <!-- 能力小组件（点击切换开关） -->
         <p class="capabilities-label">我能帮你做什么</p>
         <div class="capability-widgets">
           <div
             v-for="cap in capabilities"
             :key="cap.key"
-            class="capability-widget"
-            @click="handleCapabilityClick(cap)"
+            :class="['capability-widget', { active: activeCaps[cap.key] }]"
+            @click="toggleCap(cap.key)"
           >
-            <span class="cap-icon-wrap" :style="{ background: cap.bg }">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" :stroke="cap.color" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <span class="cap-icon-wrap" :style="{ background: activeCaps[cap.key] ? cap.color : cap.bg }">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" :stroke="activeCaps[cap.key] ? '#fff' : cap.color" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="11" cy="11" r="8"/>
                 <path d="M21 21l-4.35-4.35"/>
               </svg>
@@ -52,19 +52,17 @@
       <!-- 消息列表 -->
       <template v-else>
         <div v-for="(msg, index) in messages" :key="index" class="message-wrapper">
-          <!-- AI 消息 — 如果包含推理过程则使用 ReActSteps -->
+          <!-- AI 消息 -->
           <div v-if="!msg.isUser" class="message ai-message">
             <div class="avatar ai-avatar">
               <AiAvatarFallback :type="aiType" />
             </div>
             <div class="ai-message-body">
-              <!-- 推理时间线 -->
               <ReActSteps
                 v-if="msg.reactCycles && msg.reactCycles.length > 0"
                 :cycles="msg.reactCycles"
                 :final-answer="msg.finalAnswer"
               />
-              <!-- 纯文本兜底 -->
               <div v-else class="message-bubble">
                 <div class="message-content">
                   {{ msg.content }}
@@ -91,27 +89,30 @@
 
     <!-- 输入区域 -->
     <div class="chat-input-container">
-      <!-- 能力快捷条 -->
+      <!-- 能力开关条（toggle，持续生效） -->
       <div class="quick-cap-bar">
         <button
           v-for="cap in capabilities"
           :key="cap.key"
-          class="quick-cap-btn"
+          :class="['quick-cap-btn', { active: activeCaps[cap.key] }]"
           :title="cap.desc"
-          @click="handleCapabilityClick(cap)"
+          @click="toggleCap(cap.key)"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" :stroke="cap.color" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" :stroke="activeCaps[cap.key] ? '#fff' : cap.color" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="11" cy="11" r="8"/>
             <path d="M21 21l-4.35-4.35"/>
           </svg>
           <span>{{ cap.name }}</span>
         </button>
+        <span v-if="activeCaps.webSearch || activeCaps.knowledgeBase" class="cap-hint">已开启能力，再次点击关闭</span>
       </div>
 
       <div class="chat-input">
         <textarea
+          ref="inputEl"
           v-model="inputMessage"
-          @keydown.enter.prevent="sendMessage"
+          @keydown.enter="handleEnter"
+          @input="autoResize"
           :placeholder="inputPlaceholder"
           class="input-box"
           :disabled="connectionStatus === 'connecting'"
@@ -136,7 +137,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import AiAvatarFallback from './AiAvatarFallback.vue'
 import ReActSteps from './ReActSteps.vue'
 
@@ -155,52 +156,38 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['send-message'])
+const emit = defineEmits(['send-message', 'capability-change'])
 
 const inputMessage = ref('')
 const messagesContainer = ref(null)
+const inputEl = ref(null)
 
-// 能力数据
+// 能力开关（toggle，持续生效直到关闭）
 const capabilities = [
   {
-    key: 'search',
+    key: 'webSearch',
     name: '网页搜索',
     desc: '实时查询互联网信息',
     color: '#4f46e5',
     bg: 'rgba(79,70,229,0.08)'
   },
   {
-    key: 'knowledge',
+    key: 'knowledgeBase',
     name: '知识库',
     desc: '检索已上传的文档',
     color: '#0891b2',
     bg: 'rgba(8,145,178,0.08)'
-  },
-  {
-    key: 'tool',
-    name: '工具调用',
-    desc: '执行代码 / 计算 / API',
-    color: '#ca8a04',
-    bg: 'rgba(202,138,4,0.08)'
-  },
-  {
-    key: 'file',
-    name: '文件操作',
-    desc: '读取 / 处理本地文件',
-    color: '#059669',
-    bg: 'rgba(5,150,105,0.08)'
   }
 ]
 
-const handleCapabilityClick = (cap) => {
-  // 填入对应能力的问题示例
-  const queries = {
-    search: '帮我搜索今天的 AI 行业新闻',
-    knowledge: '帮我检索知识库中的相关内容',
-    tool: '帮我写一段 Python 代码处理数据',
-    file: '帮我处理一个 csv 文件并分析'
-  }
-  emit('send-message', queries[cap.key])
+const activeCaps = reactive({
+  webSearch: false,
+  knowledgeBase: false
+})
+
+const toggleCap = (key) => {
+  activeCaps[key] = !activeCaps[key]
+  emit('capability-change', { ...activeCaps })
 }
 
 const suggestedQuestions = [
@@ -214,17 +201,37 @@ const hasUserMessages = computed(() => props.messages.some(m => m.isUser))
 
 const inputPlaceholder = computed(() => {
   if (props.connectionStatus === 'connecting') return 'AI 正在思考中...'
-  return '输入消息，按 Enter 发送'
+  return '输入消息，Enter 发送，Shift+Enter 换行'
 })
 
 const handleSuggestionClick = (question) => {
   emit('send-message', question)
 }
 
+// Enter 发送，Shift+Enter 换行
+const handleEnter = (e) => {
+  if (e.shiftKey) {
+    // 允许换行，不阻止默认行为
+    return
+  }
+  e.preventDefault()
+  sendMessage()
+}
+
+// textarea 自动扩高
+const autoResize = () => {
+  const el = inputEl.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = Math.min(el.scrollHeight, 160) + 'px'
+}
+
 const sendMessage = () => {
   if (!inputMessage.value.trim()) return
   emit('send-message', inputMessage.value)
   inputMessage.value = ''
+  // 重置高度
+  if (inputEl.value) inputEl.value.style.height = 'auto'
 }
 
 const formatTime = (timestamp) => {
@@ -239,7 +246,6 @@ const scrollToBottom = async () => {
   }
 }
 
-// 深度 watch —— 推理步骤变化也要触发滚动
 watch(
   () => props.messages.map(m => JSON.stringify(m)).join(''),
   () => scrollToBottom()
@@ -345,9 +351,9 @@ onMounted(() => {
   padding: 14px 16px;
   border-radius: 12px;
   background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
+  border: 1.5px solid var(--border-subtle);
   cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s, background 0.2s;
   text-align: left;
 }
 
@@ -361,6 +367,12 @@ onMounted(() => {
   transform: translateY(0);
 }
 
+.capability-widget.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  box-shadow: 0 2px 12px rgba(79, 70, 229, 0.12);
+}
+
 .cap-icon-wrap {
   width: 40px;
   height: 40px;
@@ -369,6 +381,7 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  transition: background 0.2s;
 }
 
 .cap-text {
@@ -491,7 +504,7 @@ onMounted(() => {
   border-radius: 50%;
 }
 
-/* ---------- AI 消息体（含 ReAct 时间线） ---------- */
+/* ---------- AI 消息体 ---------- */
 .ai-message-body {
   flex: 1;
   min-width: 0;
@@ -559,6 +572,7 @@ onMounted(() => {
 
 .quick-cap-bar {
   display: flex;
+  align-items: center;
   gap: 6px;
   padding: 10px 16px 0;
   overflow-x: auto;
@@ -567,6 +581,13 @@ onMounted(() => {
 }
 .quick-cap-bar::-webkit-scrollbar {
   display: none;
+}
+
+.cap-hint {
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+  margin-left: 4px;
+  white-space: nowrap;
 }
 
 .quick-cap-btn {
@@ -594,12 +615,18 @@ onMounted(() => {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
+.quick-cap-btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.2);
+}
+
 .chat-input {
   display: flex;
   padding: 10px 16px 14px;
-  height: 64px;
   box-sizing: border-box;
-  align-items: center;
+  align-items: flex-end;
   gap: 10px;
 }
 
@@ -614,12 +641,13 @@ onMounted(() => {
   background: var(--bg-card);
   resize: none;
   min-height: 20px;
-  max-height: 80px;
+  max-height: 160px;
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
   overflow-y: auto;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  line-height: 1.5;
 }
 
 .input-box::placeholder {
