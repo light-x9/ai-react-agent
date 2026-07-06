@@ -115,14 +115,47 @@ public class ConversationController {
 
         // 首条用户消息更新标题
         if ("user".equals(req.role()) && "新对话".equals(c.getTitle())) {
-            String title = req.content().length() > 20
-                    ? req.content().substring(0, 20)
-                    : req.content();
+            String title = generateTitle(req.content());
             c.setTitle(title);
         }
         conversationRepository.save(c); // 触发 @PreUpdate 更新 updatedAt
 
         return Map.of("success", true, "id", m.getId(), "title", c.getTitle());
+    }
+
+    /** 标题最大长度（超出时末尾加省略号） */
+    private static final int TITLE_MAX_LEN = 20;
+
+    /**
+     * 从用户首条消息生成会话标题：完整保留原文，仅超长时从末尾截断
+     * <p>
+     * 不做任何前缀剥离，保证句子语义完整。
+     */
+    private String generateTitle(String content) {
+        if (content == null || content.isBlank()) return "新对话";
+        String title = content.trim();
+        if (title.length() > TITLE_MAX_LEN) {
+            title = title.substring(0, TITLE_MAX_LEN) + "…";
+        }
+        return title;
+    }
+
+    /**
+     * 重命名会话标题
+     */
+    @PutMapping("/{id}")
+    public Map<String, Object> rename(@PathVariable Long id, @RequestBody RenameRequest req) {
+        String userId = currentUserId();
+        Conversation c = conversationRepository.findById(id).orElse(null);
+        if (c == null || !userId.equals(c.getUserId())) {
+            return Map.of("success", false, "message", "会话不存在或无权限");
+        }
+        if (req.title() == null || req.title().isBlank()) {
+            return Map.of("success", false, "message", "标题不能为空");
+        }
+        c.setTitle(req.title().trim());
+        conversationRepository.save(c);
+        return Map.of("success", true, "title", c.getTitle());
     }
 
     private String currentUserId() {
@@ -139,5 +172,8 @@ public class ConversationController {
     }
 
     public record SaveMessageRequest(String role, String content) {
+    }
+
+    public record RenameRequest(String title) {
     }
 }

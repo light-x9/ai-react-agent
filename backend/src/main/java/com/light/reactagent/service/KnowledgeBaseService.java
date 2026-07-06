@@ -55,6 +55,9 @@ public class KnowledgeBaseService {
             throw new IllegalArgumentException(
                     "unsupported file type: " + extension + ", only: " + ALLOWED_EXTENSIONS);
         }
+        if (file.getSize() > 10 * 1024 * 1024) {
+            throw new IllegalArgumentException("文件过大，单文件上限 10MB");
+        }
 
         String fileContent = new String(file.getBytes(), "UTF-8");
         if (fileContent.isBlank()) {
