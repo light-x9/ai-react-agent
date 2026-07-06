@@ -17,7 +17,7 @@ public class LightManus extends ToolCallAgent {
 
     public LightManus(ToolCallback[] allTools, ChatModel dashscopeChatModel) {
         super(allTools);
-        this.setName("yuManus");
+        this.setName("lightManus");
 
         String SYSTEM_PROMPT = """
                 You are LightManus, an all-capable AI assistant, aimed at solving any task presented by the user.

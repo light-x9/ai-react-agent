@@ -6,6 +6,7 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,16 +36,15 @@ public class AiAgentController {
     /**
      * 流式调用 SuperAgent，支持基于 chatId 的多轮对话记忆
      * <p>
-     * POST + JSON Body：对话内容不进 URL，且为 JWT 认证铺路（fetch 可带 Authorization）。
-     * 并发限制：全局上限 + 单 IP 同时只跑 1 个 Agent，防过载烧钱。认证上线后改按 userId。
+     * 需 JWT 认证（SecurityConfig 保护 /ai/**）。限流 key 优先用已认证用户名，无则回退 IP。
      *
      * @param request     包含 message（当前用户消息）和 history（历史上下文，可选）
-     * @param httpRequest 用于提取客户端 IP（限流 key）
+     * @param httpRequest 用于提取客户端 IP（限流回退 key）
      */
     @PostMapping(value = "/manus/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE + ";charset=UTF-8")
     public SseEmitter doChatWithManus(@RequestBody ChatRequest request, HttpServletRequest httpRequest) {
-        // 1. 并发限流：当前按 IP，认证上线后改 userId
-        String clientKey = extractClientIp(httpRequest);
+        // 1. 并发限流：优先按用户，回退 IP
+        String clientKey = extractPrincipal(httpRequest);
         if (!rateLimiter.tryAcquire(clientKey)) {
             SseEmitter rejected = new SseEmitter();
             try {
@@ -84,6 +84,19 @@ public class AiAgentController {
             releaseOnce.run();
             throw e;
         }
+    }
+
+    /**
+     * 提取限流 key：优先用已认证用户名，无认证时回退客户端 IP
+     */
+    private String extractPrincipal(HttpServletRequest req) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated()
+                && auth.getPrincipal() != null
+                && !"anonymousUser".equals(auth.getPrincipal())) {
+            return "user:" + auth.getName();
+        }
+        return "ip:" + extractClientIp(req);
     }
 
     /**
