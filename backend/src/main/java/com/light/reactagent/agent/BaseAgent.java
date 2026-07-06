@@ -13,6 +13,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 抽象基础代理类，用于管理代理状态和执行流程。
@@ -43,6 +46,12 @@ public abstract class BaseAgent {
 
     // Memory 记忆（需要自主维护会话上下文）
     private List<Message> messageList = new ArrayList<>();
+
+    /**
+     * Agent 执行完成时的回调钩子（用于释放并发许可等资源）。
+     * 由外部（如 Controller）注入，在 runStream 的 finally 中调用。
+     */
+    private Runnable onAgentComplete;
 
     /**
      * 运行代理
@@ -100,6 +109,22 @@ public abstract class BaseAgent {
     public SseEmitter runStream(String userPrompt) {
         // 创建一个超时时间较长的 SseEmitter
         SseEmitter sseEmitter = new SseEmitter(300000L); // 5 分钟超时
+
+        // 心跳：每 15s 发送一个 SSE 注释行（:ping），防止 Nginx 默认 60s proxy_read_timeout 掐断连接。
+        // 注释行不带 data: 前缀，前端不会把它当消息内容，仅用于保活。
+        final ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "sse-heartbeat");
+            t.setDaemon(true);
+            return t;
+        });
+        heartbeat.scheduleAtFixedRate(() -> {
+            try {
+                sseEmitter.send(SseEmitter.event().comment("ping"));
+            } catch (Exception ignored) {
+                // 连接已关闭等异常，忽略即可
+            }
+        }, 15, 15, TimeUnit.SECONDS);
+
         // 使用线程异步处理，避免阻塞主线程
         CompletableFuture.runAsync(() -> {
             // 1、基础校验
@@ -155,14 +180,26 @@ public abstract class BaseAgent {
                 }
             } finally {
                 // 3、清理资源
+                heartbeat.shutdownNow();
                 this.cleanup();
+                // 释放并发许可等外部资源
+                if (onAgentComplete != null) {
+                    try {
+                        onAgentComplete.run();
+                    } catch (Exception ignored) {
+                    }
+                }
             }
         });
 
         // 设置超时回调
         sseEmitter.onTimeout(() -> {
+            heartbeat.shutdownNow();
             this.state = AgentState.ERROR;
             this.cleanup();
+            if (onAgentComplete != null) {
+                try { onAgentComplete.run(); } catch (Exception ignored) {}
+            }
             log.warn("SSE connection timeout");
         });
         // 设置完成回调
