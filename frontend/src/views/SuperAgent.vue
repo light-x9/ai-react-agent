@@ -4,29 +4,24 @@
     <div class="main-area">
     <!-- ====== Header ====== -->
     <header class="header">
-      <button class="back-button" @click="goBack" aria-label="返回首页">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M19 12H5M12 19l-7-7 7-7" />
-        </svg>
-        <span>返回</span>
-      </button>
-      <h1 class="title">AI 超级智能体</h1>
-      <div class="header-actions">
-        <button class="header-btn" @click="triggerUpload" :title="uploading ? '上传中...' : '上传文件'">
-          <svg v-if="!uploading" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
+      <div class="header-left">
+        <div class="brand-mark" aria-label="LightManus">
+          <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="11" cy="6" r="3.5" stroke="#6366f1" stroke-width="1.2" fill="none" opacity="0.45" />
+            <circle cx="6" cy="16" r="3.5" stroke="#6366f1" stroke-width="1.2" fill="none" opacity="0.45" />
+            <circle cx="16" cy="16" r="3.5" stroke="#6366f1" stroke-width="1.2" fill="none" opacity="0.45" />
           </svg>
-          <span v-if="!uploading">上传</span>
-          <span v-else class="spinner">...</span>
-        </button>
-        <button class="header-btn" @click="openManageDialog" title="管理知识库">
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="header-btn" @click="openManageDialog" title="上传 / 管理知识库文档">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
             <line x1="16" y1="13" x2="8" y2="13" />
             <line x1="16" y1="17" x2="8" y2="17" />
           </svg>
-          <span>管理</span>
+          <span>管理知识库</span>
         </button>
       </div>
     </header>
@@ -636,7 +631,13 @@ const closeManageDialog = () => {
  * 接入真实后端时，只需替换 runMockReActStream() 为 connectSSE()，
  * 在 onmessage 中根据 event.data 的 type 字段调用对应函数即可。
  */
-const sendMessage = (message) => {
+const sendMessage = async (message) => {
+  // 无活跃会话时自动创建（首次发消息、或全部会话被删除后）
+  if (!chatStore.activeId) {
+    const id = await chatStore.createSession()
+    if (!id) return // 创建失败，中止发送
+  }
+
   // 前置意图校验：查询类消息 + 未开启任何检索能力 → 显示柔和提示
   const intent = classifyMessage(message)
   const hasAnyCap = activeCaps.value.webSearch || activeCaps.value.knowledgeBase
@@ -686,22 +687,31 @@ const sendMessage = (message) => {
         .map(m => (m.isUser ? 'User: ' : 'Assistant: ') + m.content)
         .join('\n');
 
+      // 锁定当前会话 ID，避免 SSE 持续期间 activeId 被切换导致 AI 回复存错会话
+      const lockedSessionId = chatStore.activeId
+
       eventSource = connectSSE('/ai/manus/chat', { message, history: historyText, webSearch: activeCaps.value.webSearch, knowledgeBase: activeCaps.value.knowledgeBase },
       // onMessage：后端每条 SST 数据 + 流结束时的 [DONE] 都走这里
       async (data) => {
         if (data === '[DONE]') {
           connectionStatus.value = 'disconnected'
           if (eventSource) { eventSource.close(); eventSource = null }
-          // await 确保消息持久化 + 用量刷新都完成，再渲染最终状态
           const content = chatStore.activeMessages[aiMessageIndex]?.content || ''
-          await chatStore.persistMessage('assistant', content)
+          // 使用锁定时的 sessionId 保存，确保 AI 回复不丢失
+          if (content) {
+            await chatStore.persistMessage('assistant', content, lockedSessionId)
+          }
           if (sidebarRef.value) await sidebarRef.value.refreshUsage()
           return
         }
         chatStore.activeMessages[aiMessageIndex].content += data
       },
-      // 异常断开：只展示错误提示
-      () => {
+      // 异常断开：无论如何尝试保存已收到的 AI 回复
+      async () => {
+        const content = chatStore.activeMessages[aiMessageIndex]?.content || ''
+        if (content) {
+          await chatStore.persistMessage('assistant', content, lockedSessionId)
+        }
         if (!chatStore.activeMessages[aiMessageIndex]?.content) {
           chatStore.activeMessages[aiMessageIndex].content = '连接失败，请检查后端是否已启动。'
         }
@@ -1057,9 +1067,9 @@ onBeforeUnmount(() => {
 
 /* === Header === */
 .header {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 14px 24px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border-subtle);

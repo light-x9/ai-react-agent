@@ -174,6 +174,11 @@ public abstract class BaseAgent {
                     results.add("Terminated: Reached max steps (" + maxSteps + ")");
                     sseEmitter.send("执行结束：达到最大步骤（" + maxSteps + "）");
                 }
+                // 发送完成标记，前端据此执行 persistMessage（避免纯靠流结束触发，被心跳等竞态干扰）
+                try {
+                    sseEmitter.send("[DONE]");
+                } catch (Exception ignored) {
+                }
                 // 正常完成
                 sseEmitter.complete();
             } catch (Exception e) {

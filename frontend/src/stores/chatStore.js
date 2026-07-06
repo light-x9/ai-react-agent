@@ -76,8 +76,7 @@ export const useChatStore = defineStore('chat', {
           this.activeId = this.sessions[0].id
           await this.loadMessages(this.activeId)
         } else {
-          // 无会话，新建一个
-          await this.createSession()
+          // 无会话：保持空状态，让用户主动点击「新对话」或首次发消息时自动创建
         }
       } catch (e) {
         console.error('chatStore init failed', e)
@@ -164,7 +163,8 @@ export const useChatStore = defineStore('chat', {
           this.activeId = this.sessions[0].id
           await this.loadMessages(this.activeId)
         } else {
-          await this.createSession()
+          // 删完最后一个会话：设为 null，让用户主动点击「新对话」或首次发消息时自动创建
+          this.activeId = null
         }
       }
     },
@@ -203,9 +203,13 @@ export const useChatStore = defineStore('chat', {
 
     /**
      * 持久化一条消息到后端（user/assistant/system）
+     * @param {string} role 角色：'user' | 'assistant' | 'system'
+     * @param {string} content 消息内容
+     * @param {number|string} [sessionId] 可选：锁定会话 ID（SSE 流完成时使用，避免 activeId 中途变化导致存错）
      */
-    async persistMessage(role, content) {
-      const session = this.sessions.find(s => String(s.id) === String(this.activeId))
+    async persistMessage(role, content, sessionId) {
+      const id = sessionId != null ? sessionId : this.activeId
+      const session = id != null ? this.sessions.find(s => String(s.id) === String(id)) : null
       if (!session || !content) return
       try {
         const res = await saveMessage(session.id, role, content)

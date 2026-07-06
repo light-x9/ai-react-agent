@@ -2,57 +2,18 @@
   <div class="chat-container">
     <!-- 聊天记录区域 -->
     <div class="chat-messages" ref="messagesContainer">
-      <!-- 空状态引导页（无用户消息时展示功能卡片） -->
-      <div v-if="!hasUserMessages" class="welcome-panel">
-        <!-- 标题区 -->
-        <div class="welcome-hero">
-          <h2 class="welcome-title">
-            看得见思考过程的 <span class="welcome-accent">AI Agent</span>
-          </h2>
-          <p class="welcome-subtitle">
-            基于 ReAct 推理框架，前端实时可视化每一步思考与工具调用
-          </p>
+            <div v-if="!hasUserMessages" class="welcome-panel">
+        <div class="empty-brand" aria-hidden="true">
+          <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="18" cy="11" r="5.5" stroke="#6366f1" stroke-width="1.5" fill="none" opacity="0.4" />
+            <circle cx="10.5" cy="25" r="5.5" stroke="#6366f1" stroke-width="1.5" fill="none" opacity="0.4" />
+            <circle cx="25.5" cy="25" r="5.5" stroke="#6366f1" stroke-width="1.5" fill="none" opacity="0.4" />
+            <circle cx="18" cy="19" r="2" fill="#6366f1" opacity="0.6">
+              <animate attributeName="opacity" values="0.4;0.8;0.4" dur="3s" repeatCount="indefinite" />
+            </circle>
+          </svg>
         </div>
-
-        <!-- 功能卡片 -->
-        <div class="feature-cards">
-          <article class="feature-card">
-            <div class="feature-card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-              </svg>
-            </div>
-            <h3 class="feature-card-title">思维链可视化</h3>
-            <p class="feature-card-text">Thought / Action / Observation 三阶段时间线，渐进式动画呈现，完整展示 AI 推理路径。</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2" />
-                <path d="M8 21h8M12 17v4" />
-              </svg>
-            </div>
-            <h3 class="feature-card-title">工具调用面板</h3>
-            <p class="feature-card-text">每次 Action 以卡片形式展示工具名称与参数，支持展开查看完整请求和响应 JSON。</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-card-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                <path d="M8 7h8M8 11h6" />
-              </svg>
-            </div>
-            <h3 class="feature-card-title">RAG 知识库</h3>
-            <p class="feature-card-text">上传文档自动分块索引，Query Rewrite 优化检索，AI 结合知识库回答专业领域问题。</p>
-          </article>
-        </div>
-
-        <!-- 建议提问卡片 -->
-        <p class="suggestion-label">试试这样问：</p>
+        <p class="empty-tagline">试试这样问：</p>
         <div class="suggestions">
           <button
             v-for="q in suggestedQuestions"
@@ -63,9 +24,7 @@
             {{ q }}
           </button>
         </div>
-      </div>
-
-      <!-- 消息列表 -->
+      </div>  <!-- 消息列表 -->
       <template v-else>
         <div v-for="(msg, index) in messages" :key="index" class="message-wrapper">
           <!-- AI 消息 -->
@@ -206,12 +165,44 @@ const toggleCap = (key) => {
   emit('capability-change', { ...activeCaps })
 }
 
-const suggestedQuestions = [
+/**
+ * 题库：覆盖联网搜索 / 知识问答 / 代码生成 / 创意科普
+ * 每次组件挂载时随机抽取 4 条展示
+ */
+const QUESTION_POOL = [
+  // 联网搜索
   '帮我搜索今天的 AI 新闻',
+  '今天有什么热门科技资讯',
+  '最近比特币价格怎么样',
+  '今天北京的天气如何',
+  // 知识问答
   '解释一下什么是 MCP 协议',
+  '总结一下 ReAct 推理的原理',
+  '什么是大语言模型的幻觉问题',
+  '解释一下量子计算的基本原理',
+  '区块链的工作原理是什么',
+  // 代码生成
+  '用 JavaScript 实现一个防抖函数',
   '帮我写一个 Python 爬虫',
-  '总结一下 ReAct 推理的原理'
+  '写一个 Docker Compose 配置',
+  '帮我写一个 Vue 3 组件示例',
+  // 创意 / 科普
+  '用通俗的方式解释什么是神经网络',
+  '帮我写一首关于 AI 的诗',
+  'React 和 Vue 有哪些主要区别',
 ]
+
+const suggestedQuestions = ref([])
+
+onMounted(() => {
+  // Fisher-Yates 洗牌后取前 4
+  const shuffled = [...QUESTION_POOL]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  suggestedQuestions.value = shuffled.slice(0, 4)
+})
 
 const hasUserMessages = computed(() => props.messages.some(m => m.isUser))
 
@@ -221,6 +212,11 @@ const inputPlaceholder = computed(() => {
 })
 
 const handleSuggestionClick = (question) => {
+  // 自动开启联网搜索，不再弹出"需要开启联网"的提示
+  if (!activeCaps.webSearch) {
+    activeCaps.webSearch = true
+    emit('capability-change', { ...activeCaps })
+  }
   emit('send-message', question)
 }
 

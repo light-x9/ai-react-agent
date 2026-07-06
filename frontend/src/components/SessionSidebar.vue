@@ -84,32 +84,34 @@
       <div v-if="chatStore.sessions.length === 0" class="empty-tip">暂无对话，点击上方新建</div>
     </div>
 
-    <!-- 底部：用量 + 用户 -->
+    <!-- 底部：用户信息（头像 hover 展示用量） -->
     <div class="sidebar-footer">
-      <div class="usage-box">
-        <div class="usage-row">
-          <span class="usage-label">今日对话</span>
-          <span class="usage-value" :class="{ near: usage.chatUsed >= usage.chatLimit * 0.8 }">
-            {{ usage.chatUsed }}/{{ usage.chatLimit }}
-          </span>
+      <div class="user-section">
+        <div class="usage-box">
+          <div class="usage-row">
+            <span class="usage-label">今日对话</span>
+            <span class="usage-value" :class="{ near: usage.chatUsed >= usage.chatLimit * 0.8 }">
+              {{ usage.chatUsed }}/{{ usage.chatLimit }}
+            </span>
+          </div>
+          <div class="usage-row">
+            <span class="usage-label">联网搜索</span>
+            <span class="usage-value" :class="{ near: usage.searchUsed >= usage.searchLimit * 0.8 }">
+              {{ usage.searchUsed }}/{{ usage.searchLimit }}
+            </span>
+          </div>
         </div>
-        <div class="usage-row">
-          <span class="usage-label">联网搜索</span>
-          <span class="usage-value" :class="{ near: usage.searchUsed >= usage.searchLimit * 0.8 }">
-            {{ usage.searchUsed }}/{{ usage.searchLimit }}
-          </span>
+        <div class="user-box">
+          <span class="user-avatar">{{ (userStore.username || 'U').charAt(0).toUpperCase() }}</span>
+          <span class="user-name">{{ userStore.username }}</span>
+          <button class="logout-btn" @click="logout" title="登出">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
         </div>
-      </div>
-      <div class="user-box">
-        <span class="user-avatar">{{ (userStore.username || 'U').charAt(0).toUpperCase() }}</span>
-        <span class="user-name">{{ userStore.username }}</span>
-        <button class="logout-btn" @click="logout" title="登出">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-        </button>
       </div>
     </div>
 
@@ -444,17 +446,36 @@ defineExpose({ refreshUsage })
   color: var(--text-tertiary);
 }
 
-/* ---------- 底部 ---------- */
+/* ---------- 底部：用户区域（hover 展开用量） ---------- */
 .sidebar-footer {
   border-top: 1px solid var(--border-subtle);
-  padding: 12px;
+  padding: 8px 12px;
 }
+
+.user-section {
+  position: relative;
+}
+
+/* 用量面板：默认隐藏，hover .user-section 时展开 */
 .usage-box {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
   background: var(--bg-base);
   border-radius: 10px;
-  padding: 10px 12px;
-  margin-bottom: 10px;
+  margin-bottom: 0;
+  padding: 0 12px;
+  transition: max-height 0.25s ease, opacity 0.2s ease, margin-bottom 0.2s ease, padding 0.2s ease;
+  pointer-events: none;
 }
+.user-section:hover .usage-box,
+.user-section:focus-within .usage-box {
+  max-height: 80px;
+  opacity: 1;
+  margin-bottom: 8px;
+  padding: 10px 12px;
+}
+
 .usage-row {
   display: flex;
   justify-content: space-between;
@@ -473,11 +494,18 @@ defineExpose({ refreshUsage })
 .usage-value.near {
   color: #d97706;
 }
+
 .user-box {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 4px;
+  border-radius: 10px;
+  cursor: default;
+  transition: background 0.15s;
+}
+.user-box:hover {
+  background: var(--bg-base);
 }
 .user-avatar {
   width: 30px;
