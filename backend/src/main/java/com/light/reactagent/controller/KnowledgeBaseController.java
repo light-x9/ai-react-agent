@@ -4,6 +4,7 @@ import com.light.reactagent.service.KnowledgeBaseService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -11,8 +12,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Knowledge base management API.
- * Supports upload, list, and delete of user knowledge base documents.
+ * 知识库管理接口（多租户隔离）
+ * <p>
+ * 所有操作都绑定当前登录用户（从 SecurityContext 取 userId），
+ * 用户只能管理自己的知识库文档。
  */
 @RestController
 @RequestMapping("/knowledge-base")
@@ -23,19 +26,19 @@ public class KnowledgeBaseController {
     private KnowledgeBaseService knowledgeBaseService;
 
     /**
-     * Upload a document to the knowledge base.
+     * 上传文档到当前用户的知识库
      */
     @PostMapping("/upload")
     public ResponseEntity<Map<String, Object>> uploadDocument(
             @RequestParam("file") MultipartFile file) {
         if (file.isEmpty()) {
             return ResponseEntity.badRequest().body(
-                    Map.of("success", false, "message", "File is empty")
-            );
+                    Map.of("success", false, "message", "File is empty"));
         }
         try {
-            String result = knowledgeBaseService.processAndStore(file);
-            log.info("upload success: {}", result);
+            String userId = currentUserId();
+            String result = knowledgeBaseService.processAndStore(file, userId);
+            log.info("upload success: {}, userId={}", result, userId);
             return ResponseEntity.ok(Map.of("success", true, "message", result));
         } catch (IllegalArgumentException e) {
             log.warn("upload validation failed: {}", e.getMessage());
@@ -49,12 +52,13 @@ public class KnowledgeBaseController {
     }
 
     /**
-     * List all user-uploaded files in the knowledge base.
+     * 列出当前用户的知识库文件
      */
     @GetMapping("/files")
     public ResponseEntity<Map<String, Object>> listFiles() {
         try {
-            List<Map<String, Object>> files = knowledgeBaseService.listUploadedFiles();
+            String userId = currentUserId();
+            List<Map<String, Object>> files = knowledgeBaseService.listUploadedFiles(userId);
             return ResponseEntity.ok(Map.of("success", true, "files", files));
         } catch (Exception e) {
             log.error("list files failed", e);
@@ -64,13 +68,14 @@ public class KnowledgeBaseController {
     }
 
     /**
-     * Delete all chunks of a specific uploaded file from the knowledge base.
+     * 删除当前用户的某个知识库文件
      */
     @DeleteMapping("/files/{sourceName}")
     public ResponseEntity<Map<String, Object>> deleteFile(
             @PathVariable("sourceName") String sourceName) {
         try {
-            int deleted = knowledgeBaseService.deleteBySource(sourceName);
+            String userId = currentUserId();
+            int deleted = knowledgeBaseService.deleteBySource(sourceName, userId);
             if (deleted == 0) {
                 return ResponseEntity.ok(Map.of(
                         "success", true,
@@ -84,5 +89,18 @@ public class KnowledgeBaseController {
             return ResponseEntity.internalServerError().body(
                     Map.of("success", false, "message", "Delete failed: " + e.getMessage()));
         }
+    }
+
+    /**
+     * 从安全上下文取当前登录用户名（作为知识库租户 key）
+     */
+    private String currentUserId() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated()
+                && auth.getPrincipal() != null
+                && !"anonymousUser".equals(auth.getPrincipal())) {
+            return auth.getName();
+        }
+        throw new IllegalStateException("未认证，无法识别用户");
     }
 }

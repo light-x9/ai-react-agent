@@ -7,26 +7,22 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * RAG knowledge base search tool.
- * Agent can autonomously call this tool in the ReAct reasoning loop
- * to retrieve relevant knowledge from PGvector vector store
- * (includes both preset documents and user-uploaded documents).
+ * RAG 知识库检索工具（多租户隔离）
  * <p>
- * Flow: user query -> QueryRewriter -> PGVector search -> return TopK results
+ * 检索时按当前登录用户的 userId 过滤，用户只能搜到自己上传的文档。
+ * userId 从 SecurityContext 获取（由 BaseAgent.runStream 传播到异步线程）。
  */
 @Component
 public class RagSearchTool {
 
-    /** PGvector vector store, loaded with preset docs at startup */
     private final VectorStore vectorStore;
-
-    /** Query rewriter: converts colloquial input to search-friendly expression */
     private final QueryRewriter queryRewriter;
 
     public RagSearchTool(
@@ -36,32 +32,25 @@ public class RagSearchTool {
         this.queryRewriter = queryRewriter;
     }
 
-    /**
-     * Search the knowledge base.
-     * 1. Rewrite user query for better retrieval
-     * 2. Search PGvector store for similar documents
-     * 3. Return formatted results
-     *
-     * @param query user's original question
-     * @return search results or fallback message
-     */
     @Tool(description = "Search the user-uploaded knowledge base documents ONLY. Use ONLY when the question is about content the user uploaded (.txt/.md files) or built-in docs. NOT for general-world questions like geography, weather, or real-time info — use searchWeb or the map tool for those instead.")
     public String searchKnowledgeBase(
             @ToolParam(description = "User query to search in knowledge base")
             String query) {
 
-        // Step 1: Query rewrite
+        String userId = currentUserId();
         String rewrittenQuery = queryRewriter.doQueryRewrite(query);
 
-        // Step 2: Vector similarity search
-        SearchRequest searchRequest = SearchRequest.builder()
+        SearchRequest.Builder builder = SearchRequest.builder()
                 .query(rewrittenQuery)
-                .topK(3)
-                .build();
+                .topK(3);
+        // 多租户隔离：只检索当前用户的文档
+        if (userId != null) {
+            builder.filterExpression("userId == '" + userId + "'");
+        }
 
+        SearchRequest searchRequest = builder.build();
         List<Document> similarDocuments = vectorStore.similaritySearch(searchRequest);
 
-        // Step 3: Format results
         if (similarDocuments.isEmpty()) {
             return "No relevant info found in the knowledge base. The knowledge base only contains user-uploaded documents. For this question, try a different tool: use the map tool (searchPoi / amap) for geographic or location questions, or searchWeb for general or real-time info. Do NOT give up — switch tools.";
         }
@@ -74,5 +63,18 @@ public class RagSearchTool {
                         })
                         .collect(Collectors.joining("\n\n"))
                 + "\n\nPlease answer based on the above content.";
+    }
+
+    /**
+     * 从安全上下文取当前用户名（知识库租户 key）
+     */
+    private String currentUserId() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated()
+                && auth.getPrincipal() != null
+                && !"anonymousUser".equals(auth.getPrincipal())) {
+            return auth.getName();
+        }
+        return null;
     }
 }

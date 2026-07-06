@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -110,6 +112,9 @@ public abstract class BaseAgent {
         // 创建一个超时时间较长的 SseEmitter
         SseEmitter sseEmitter = new SseEmitter(300000L); // 5 分钟超时
 
+        // 捕获主线程的 SecurityContext，传播到异步线程（Agent 工具调用需取 userId 做租户隔离）
+        final SecurityContext securityContext = SecurityContextHolder.getContext();
+
         // 心跳：每 15s 发送一个 SSE 注释行（:ping），防止 Nginx 默认 60s proxy_read_timeout 掐断连接。
         // 注释行不带 data: 前缀，前端不会把它当消息内容，仅用于保活。
         final ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -127,6 +132,8 @@ public abstract class BaseAgent {
 
         // 使用线程异步处理，避免阻塞主线程
         CompletableFuture.runAsync(() -> {
+            // 传播 SecurityContext 到异步线程，使 RagSearchTool 等工具能取到当前用户
+            SecurityContextHolder.setContext(securityContext);
             // 1、基础校验
             try {
                 if (this.state != AgentState.IDLE) {
@@ -181,6 +188,7 @@ public abstract class BaseAgent {
             } finally {
                 // 3、清理资源
                 heartbeat.shutdownNow();
+                SecurityContextHolder.clearContext();
                 this.cleanup();
                 // 释放并发许可等外部资源
                 if (onAgentComplete != null) {

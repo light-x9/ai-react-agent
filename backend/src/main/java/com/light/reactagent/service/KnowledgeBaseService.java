@@ -16,8 +16,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Knowledge base document service.
- * Handles file upload, parsing, chunking, vectorization, listing, and deletion.
+ * 知识库文档服务（多租户隔离版）
+ * <p>
+ * 所有写入/查询/删除都带 userId，用户之间数据隔离。
+ * userId 来自 JWT 认证（SecurityContext），由 Controller 层传入。
  */
 @Service
 @Slf4j
@@ -40,9 +42,9 @@ public class KnowledgeBaseService {
     // ==================== Upload ====================
 
     /**
-     * Parse, split, embed and store an uploaded file into PGvector.
+     * 解析、分块、向量化并存储上传文件，metadata 带 userId 实现租户隔离
      */
-    public String processAndStore(MultipartFile file) throws IOException {
+    public String processAndStore(MultipartFile file, String userId) throws IOException {
         String originalFilename = file.getOriginalFilename();
         if (originalFilename == null || originalFilename.isBlank()) {
             throw new IllegalArgumentException("filename is empty");
@@ -58,14 +60,15 @@ public class KnowledgeBaseService {
         if (fileContent.isBlank()) {
             throw new IllegalArgumentException("file content is empty");
         }
-        log.info("file read: {}, {} chars", originalFilename, fileContent.length());
+        log.info("file read: {}, {} chars, userId={}", originalFilename, fileContent.length(), userId);
 
         Document document = new Document(
                 fileContent,
                 Map.of(
                         "source", originalFilename,
                         "type", "user_upload",
-                        "extension", extension
+                        "extension", extension,
+                        "userId", userId
                 )
         );
 
@@ -73,7 +76,7 @@ public class KnowledgeBaseService {
         log.info("split: {} -> {} chunks", originalFilename, splitDocuments.size());
 
         pgVectorVectorStore.add(splitDocuments);
-        log.info("stored: {}, {} chunks in vector DB", originalFilename, splitDocuments.size());
+        log.info("stored: {}, {} chunks in vector DB, userId={}", originalFilename, splitDocuments.size(), userId);
 
         return "File uploaded: " + originalFilename + " -> " + splitDocuments.size() + " chunks stored";
     }
@@ -81,38 +84,38 @@ public class KnowledgeBaseService {
     // ==================== List ====================
 
     /**
-     * List all user-uploaded files with their chunk counts.
-     * Queries the PGvector table directly via metadata.
+     * 列出指定用户的上传文件及其分块数（按 userId 过滤）
      */
-    public List<Map<String, Object>> listUploadedFiles() {
+    public List<Map<String, Object>> listUploadedFiles(String userId) {
         String sql = """
                 SELECT metadata->>'source' AS source,
                        COUNT(*) AS chunks
                 FROM vector_store
                 WHERE metadata->>'type' = 'user_upload'
+                  AND metadata->>'userId' = ?
                 GROUP BY metadata->>'source'
                 ORDER BY source
                 """;
         List<Map<String, Object>> files = new ArrayList<>();
-        jdbcTemplate.query(sql, rs -> {
+        jdbcTemplate.query(sql, ps -> ps.setString(1, userId), rs -> {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("source", rs.getString("source"));
             row.put("chunks", rs.getLong("chunks"));
             files.add(row);
         });
-        log.info("listed {} uploaded files", files.size());
+        log.info("listed {} uploaded files for userId={}", files.size(), userId);
         return files;
     }
 
     // ==================== Delete ====================
 
     /**
-     * Delete all chunks of a specific uploaded file by source name.
+     * 删除指定用户的某个上传文件的所有分块（按 userId 过滤，防越权删除他人文件）
      */
-    public int deleteBySource(String sourceName) {
-        String sql = "DELETE FROM vector_store WHERE metadata->>'source' = ?";
-        int deleted = jdbcTemplate.update(sql, sourceName);
-        log.info("deleted {} chunks for source: {}", deleted, sourceName);
+    public int deleteBySource(String sourceName, String userId) {
+        String sql = "DELETE FROM vector_store WHERE metadata->>'source' = ? AND metadata->>'userId' = ?";
+        int deleted = jdbcTemplate.update(sql, sourceName, userId);
+        log.info("deleted {} chunks for source: {}, userId={}", deleted, sourceName, userId);
         return deleted;
     }
 
