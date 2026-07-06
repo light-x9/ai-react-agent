@@ -26,6 +26,18 @@
           </svg>
           <span>管理</span>
         </button>
+        <div class="user-menu">
+          <span class="user-avatar">{{ (userStore.username || 'U').charAt(0).toUpperCase() }}</span>
+          <span class="user-name">{{ userStore.username }}</span>
+          <button class="header-btn logout-btn" @click="logout" title="登出">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span>登出</span>
+          </button>
+        </div>
       </div>
     </header>
 
@@ -114,7 +126,9 @@ import ChatRoom from '../components/ChatRoom.vue'
 import AppFooter from '../components/AppFooter.vue'
 import { chatWithManus, uploadKnowledgeBase, listKnowledgeFiles, deleteKnowledgeFile } from '../api'
 import { connectSSE } from '../api'
+import { useUserStore } from '@/stores/userStore'
 const USE_MOCK = false  // true=Mock演示, false=真实后端
+const userStore = useUserStore()
 
 
 useHead({
@@ -583,6 +597,10 @@ async function runMockReActStream(msgIndex, scenario) {
 }
 
 const goBack = () => router.push('/')
+const logout = () => {
+  userStore.logout()
+  router.push('/login')
+}
 
 onMounted(() => {
   // 确保有激活的会话（首次加载或 localStorage 为空时自动创建）
@@ -661,6 +679,41 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-self: end;
   gap: 8px;
+}
+
+.user-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 10px;
+  margin-left: 4px;
+  border-left: 1px solid var(--border-subtle);
+}
+.user-avatar {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #818cf8, #6366f1);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.user-name {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.logout-btn {
+  color: var(--text-tertiary);
+}
+.logout-btn:hover {
+  color: #dc2626;
+  border-color: rgba(220,38,38,0.3);
+  background: rgba(220,38,38,0.05);
 }
 
 .header-btn {

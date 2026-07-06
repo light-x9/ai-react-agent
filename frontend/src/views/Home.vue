@@ -89,7 +89,7 @@
 
     <!-- ========== 行动入口 ========== -->
     <section class="cta">
-      <button class="cta-card" @click="navigateTo('/super-agent')">
+      <button class="cta-card" @click="goSuperAgent">
         <span class="cta-card-inner">
           <span class="cta-card-text">
             <span class="cta-tag">立即体验</span>
@@ -116,7 +116,9 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@vueuse/head'
+import { useUserStore } from '@/stores/userStore'
 
+const userStore = useUserStore()
 const currentYear = computed(() => new Date().getFullYear())
 
 useHead({
@@ -131,6 +133,7 @@ useHead({
 
 const router = useRouter()
 const navigateTo = (path) => router.push(path)
+const goSuperAgent = () => router.push(userStore.isLoggedIn ? '/super-agent' : '/login')
 </script>
 
 <style scoped>

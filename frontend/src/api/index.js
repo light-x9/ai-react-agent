@@ -9,21 +9,36 @@ const request = axios.create({
   timeout: 60000
 })
 
-// 从 localStorage 读取 JWT（认证系统上线后，登录时存入 'token' 即自动生效）
+// 请求拦截器：自动携带 JWT
+request.interceptors.request.use(config => {
+  const token = localStorage.getItem('token')
+  if (token) {
+    config.headers.Authorization = 'Bearer ' + token
+  }
+  return config
+})
+
+// 响应拦截器：401 清登录态并跳登录页
+request.interceptors.response.use(
+  res => res,
+  err => {
+    if (err.response && err.response.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('username')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(err)
+  }
+)
+
+// 从 localStorage 读取 JWT（与 userStore.setAuth 写入的 key 一致）
 const getToken = () => localStorage.getItem('token') || ''
 
 /**
  * 连接 SSE 流（基于 fetch + ReadableStream）
- *
- * 为何弃用 EventSource：
- *  1. EventSource 只支持 GET，无法携带 Authorization header —— 会阻塞后续 JWT 认证
- *  2. GET 会把 message/history 拼进 URL，泄露进 Nginx 日志 / 浏览器历史，且受 URL 长度限制
- *
- * @param {string} url       接口路径（如 '/ai/manus/chat'）
- * @param {object} body      POST 请求体（JSON）
- * @param {function} onMessage 收到数据时回调，参数为解析出的 data 字符串；'[DONE]' 表示流结束
- * @param {function} onError   发生错误时回调
- * @returns {{ close: Function }} 兼容 EventSource 的句柄，close() 用于中断流
+ * 支持 POST body 与 Authorization header（JWT 认证）。
  */
 export const connectSSE = (url, body, onMessage, onError) => {
   const controller = new AbortController()
@@ -51,6 +66,13 @@ export const connectSSE = (url, body, onMessage, onError) => {
     signal: controller.signal
   }).then(async (response) => {
     if (!response.ok) {
+      // 401：token 失效，清登录态跳登录页
+      if (response.status === 401) {
+        localStorage.removeItem('token')
+        localStorage.removeItem('username')
+        window.location.href = '/login'
+        return
+      }
       throw new Error('HTTP ' + response.status)
     }
     const reader = response.body.getReader()
@@ -62,7 +84,6 @@ export const connectSSE = (url, body, onMessage, onError) => {
       if (done) break
       buffer += decoder.decode(value, { stream: true })
 
-      // SSE 事件以空行（\n\n）分隔，可能一次读到多个事件
       let idx
       while ((idx = buffer.indexOf('\n\n')) !== -1) {
         const chunk = buffer.slice(0, idx)
@@ -70,16 +91,13 @@ export const connectSSE = (url, body, onMessage, onError) => {
         parseSSEChunk(chunk, dispatch)
       }
     }
-    // 处理缓冲区尾部残留
     if (buffer.trim()) {
       parseSSEChunk(buffer, dispatch)
     }
-    // 兜底：若后端未显式发送 [DONE] 就关闭流，补发一次确保 UI 状态收尾
     if (!receivedDone && onMessage) {
       onMessage('[DONE]')
     }
   }).catch((err) => {
-    // 主动中断（close()）不算错误
     if (err && err.name === 'AbortError') return
     if (onError) onError(err)
   })
@@ -89,9 +107,6 @@ export const connectSSE = (url, body, onMessage, onError) => {
   }
 }
 
-/**
- * 解析单个 SSE 事件块，提取 data: 行内容并回调
- */
 function parseSSEChunk(chunk, dispatch) {
   const lines = chunk.split('\n')
   for (const line of lines) {
@@ -102,11 +117,22 @@ function parseSSEChunk(chunk, dispatch) {
   }
 }
 
+// ============ 认证接口 ============
+export const login = async (username, password) => {
+  const res = await request.post('/auth/login', { username, password })
+  return res.data
+}
+
+export const register = async (username, password) => {
+  const res = await request.post('/auth/register', { username, password })
+  return res.data
+}
+
 export const chatWithManus = (message) => {
   return connectSSE('/ai/manus/chat', { message })
 }
 
-// Upload a file to knowledge base
+// ============ 知识库接口 ============
 export const uploadKnowledgeBase = async (file) => {
   const formData = new FormData()
   formData.append('file', file)
@@ -116,13 +142,11 @@ export const uploadKnowledgeBase = async (file) => {
   return response.data
 }
 
-// List uploaded files in knowledge base
 export const listKnowledgeFiles = async () => {
   const response = await request.get('/knowledge-base/files')
   return response.data
 }
 
-// Delete a file from knowledge base
 export const deleteKnowledgeFile = async (sourceName) => {
   const response = await request.delete('/knowledge-base/files/' + encodeURIComponent(sourceName))
   return response.data
@@ -132,5 +156,7 @@ export default {
   chatWithManus,
   uploadKnowledgeBase,
   listKnowledgeFiles,
-  deleteKnowledgeFile
+  deleteKnowledgeFile,
+  login,
+  register
 }
