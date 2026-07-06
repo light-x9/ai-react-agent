@@ -32,9 +32,11 @@ public class AuthController {
      */
     @PostMapping("/register")
     public Map<String, Object> register(@RequestBody RegisterRequest req) {
-        if (req.username() == null || req.username().isBlank()
-                || req.password() == null || req.password().length() < 6) {
-            return Map.of("success", false, "message", "用户名不能为空且密码至少 6 位");
+        if (req.username() == null || !req.username().matches("^[a-zA-Z0-9_]{3,20}$")) {
+            return Map.of("success", false, "message", "用户名仅支持字母/数字/下划线，3-20 位");
+        }
+        if (req.password() == null || req.password().length() < 6) {
+            return Map.of("success", false, "message", "密码至少 6 位");
         }
         if (userRepository.existsByUsername(req.username())) {
             return Map.of("success", false, "message", "用户名已存在");

@@ -248,6 +248,7 @@ const doDelete = async () => {
  */
 const sendMessage = (message) => {
   chatStore.addMessageToActive(message, true)
+  chatStore.persistMessage('user', message)
   if (eventSource) eventSource.close()
 
   // 创建 AI 消息骨架
@@ -276,6 +277,7 @@ const sendMessage = (message) => {
         if (data === '[DONE]') {
           connectionStatus.value = 'disconnected'
           if (eventSource) { eventSource.close(); eventSource = null }
+          chatStore.persistMessage('assistant', chatStore.activeMessages[aiMessageIndex].content)
           return
         }
         chatStore.activeMessages[aiMessageIndex].content += data
@@ -602,12 +604,10 @@ const logout = () => {
   router.push('/login')
 }
 
-onMounted(() => {
-  // 确保有激活的会话（首次加载或 localStorage 为空时自动创建）
-  if (!chatStore.currentSession) {
-    chatStore.createSession()
-  }
-  // 仅在新会话时显示欢迎语，切回来的会话保留原有消息
+onMounted(async () => {
+  // 初始化：从后端加载会话列表与历史消息（无会话则新建）
+  await chatStore.init()
+  // 仅在空会话时显示欢迎语
   if (chatStore.activeMessages.length === 0) {
     chatStore.addMessageToActive('你好，我是 AI 超级智能体。我能搜索网页、调用工具、管理知识库，帮你完成复杂任务。上传 .txt/.md 文件可建立专属知识库，有问必答。', false)
   }

@@ -152,11 +152,38 @@ export const deleteKnowledgeFile = async (sourceName) => {
   return response.data
 }
 
+// ============ 对话管理接口 ============
+export const createConversation = async (title) => {
+  const res = await request.post('/conversation', { title })
+  return res.data
+}
+export const listConversations = async () => {
+  const res = await request.get('/conversation')
+  return res.data
+}
+export const deleteConversation = async (id) => {
+  const res = await request.delete('/conversation/' + id)
+  return res.data
+}
+export const getMessages = async (id) => {
+  const res = await request.get('/conversation/' + id + '/messages')
+  return res.data
+}
+export const saveMessage = async (conversationId, role, content) => {
+  const res = await request.post('/conversation/' + conversationId + '/messages', { role, content })
+  return res.data
+}
+
 export default {
   chatWithManus,
   uploadKnowledgeBase,
   listKnowledgeFiles,
   deleteKnowledgeFile,
   login,
-  register
+  register,
+  createConversation,
+  listConversations,
+  deleteConversation,
+  getMessages,
+  saveMessage
 }

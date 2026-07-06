@@ -1,103 +1,159 @@
-﻿import { defineStore } from 'pinia'
+import { defineStore } from 'pinia'
+import {
+  listConversations,
+  createConversation,
+  deleteConversation,
+  getMessages,
+  saveMessage
+} from '@/api'
 
 /**
- * 会话持久化 Store
- * 
- * 把 messages 从「组件内部变量」提升到「全局持久化存储」，
- * 解决路由切换/页面刷新后对话丢失的问题。
- * 
- * 数据结构：
- *   sessions[]  ← 多会话列表，每个会话包含 chatId + messages
- *   activeChatId ← 当前激活的会话 ID
- * 
- * 持久化：通过 pinia-plugin-persistedstate 自动同步到 localStorage
+ * 会话 Store（后端权威 + 本地缓存）
+ *
+ * 会话列表与消息历史以后端为准，localStorage 仅作首屏缓存。
+ * 切换会话时从后端拉取消息历史；发送消息后异步保存到后端。
  */
 export const useChatStore = defineStore('chat', {
 
-  // ========== 状态 ==========
   state: () => ({
-    // 会话列表，每个元素：{ chatId, title, messages[], createdAt, updatedAt }
+    // 会话列表，每个元素：{ id, title, messages[], _loaded, updatedAt }
     sessions: [],
-    // 当前激活的会话 ID
-    activeChatId: null,
+    // 当前激活会话 id（后端 Long 转字符串）
+    activeId: null,
+    // 初始化状态
+    initialized: false,
   }),
 
-  // ========== 持久化配置 ==========
   persist: {
-    key: 'react-agent-chat',    // localStorage 的 key 名
+    key: 'react-agent-chat',
     storage: localStorage,
-    // 只持久化 sessions 和 activeChatId，不存其他临时状态
-    paths: ['sessions', 'activeChatId'],
+    paths: ['sessions', 'activeId'],
   },
 
-  // ========== 计算属性 ==========
   getters: {
-    /** 当前会话的消息列表（组件绑定的核心数据） */
     activeMessages: (state) => {
-      const session = state.sessions.find(s => s.chatId === state.activeChatId)
+      const session = state.sessions.find(s => String(s.id) === String(state.activeId))
       return session ? session.messages : []
     },
-
-    /** 当前会话对象 */
     currentSession: (state) => {
-      return state.sessions.find(s => s.chatId === state.activeChatId) || null
+      return state.sessions.find(s => String(s.id) === String(state.activeId)) || null
     },
   },
 
-  // ========== 操作方法 ==========
   actions: {
 
     /**
-     * 创建新会话
-     * @returns {string} 新会话的 chatId
+     * 初始化：从后端加载会话列表，选最近会话并加载消息；无会话则新建
      */
-    createSession() {
-      const chatId = Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
-      const session = {
-        chatId,
-        title: '新对话',
-        messages: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      }
-      this.sessions.push(session)
-      this.activeChatId = chatId
-      return chatId
-    },
-
-    /**
-     * 切换当前会话
-     */
-    switchSession(chatId) {
-      this.activeChatId = chatId
-    },
-
-    /**
-     * 删除会话
-     * 删完后自动切换到最近会话，若没有则新建
-     */
-    deleteSession(chatId) {
-      this.sessions = this.sessions.filter(s => s.chatId !== chatId)
-      if (this.activeChatId === chatId) {
-        if (this.sessions.length > 0) {
-          // 切换到最后一个会话
-          this.activeChatId = this.sessions[this.sessions.length - 1].chatId
+    async init() {
+      if (this.initialized) return
+      try {
+        const res = await listConversations()
+        if (res.success && res.sessions && res.sessions.length > 0) {
+          this.sessions = res.sessions.map(s => ({
+            id: s.id,
+            title: s.title,
+            messages: [],
+            _loaded: false,
+            updatedAt: s.updatedAt,
+          }))
+          this.activeId = this.sessions[0].id
+          await this.loadMessages(this.activeId)
         } else {
-          // 没有会话了，新建一个
-          this.createSession()
+          // 无会话，新建一个
+          await this.createSession()
+        }
+      } catch (e) {
+        console.error('chatStore init failed', e)
+      }
+      this.initialized = true
+    },
+
+    /**
+     * 创建新会话（调后端）
+     */
+    async createSession() {
+      try {
+        const res = await createConversation('新对话')
+        if (res.success) {
+          const session = {
+            id: res.id,
+            title: res.title,
+            messages: [],
+            _loaded: true,
+            updatedAt: Date.now(),
+          }
+          this.sessions.unshift(session)
+          this.activeId = res.id
+          return res.id
+        }
+      } catch (e) {
+        console.error('createSession failed', e)
+      }
+      return null
+    },
+
+    /**
+     * 切换会话：设激活 + 按需加载消息历史
+     */
+    async switchSession(id) {
+      this.activeId = id
+      const session = this.sessions.find(s => String(s.id) === String(id))
+      if (session && !session._loaded) {
+        await this.loadMessages(id)
+      }
+    },
+
+    /**
+     * 从后端加载某会话的消息历史
+     */
+    async loadMessages(id) {
+      const session = this.sessions.find(s => String(s.id) === String(id))
+      if (!session) return
+      try {
+        const res = await getMessages(id)
+        if (res.success && res.messages) {
+          session.messages = res.messages.map(m => ({
+            content: m.content,
+            isUser: m.role === 'user',
+            type: m.role === 'system' ? 'system' : '',
+            time: m.createdAt,
+            reactCycles: [],
+            finalAnswer: '',
+            _cycleIndex: 0,
+          }))
+          session._loaded = true
+        }
+      } catch (e) {
+        console.error('loadMessages failed', e)
+      }
+    },
+
+    /**
+     * 删除会话（调后端 + 本地删）
+     */
+    async deleteSession(id) {
+      try {
+        await deleteConversation(id)
+      } catch (e) {
+        console.error('deleteSession failed', e)
+      }
+      this.sessions = this.sessions.filter(s => String(s.id) !== String(id))
+      if (String(this.activeId) === String(id)) {
+        if (this.sessions.length > 0) {
+          this.activeId = this.sessions[0].id
+          await this.loadMessages(this.activeId)
+        } else {
+          await this.createSession()
         }
       }
     },
 
     /**
-     * 向当前会话追加一条消息
-     * @param {string} content  消息内容
-     * @param {boolean} isUser  是否用户消息
-     * @param {string} type     消息类型：'' 普通, 'system' 系统提示
-     * @param {object} extra    扩展字段：reactCycles, finalAnswer, _cycleIndex
+     * 向当前会话追加一条消息（仅本地，用于渲染）
      */
     addMessageToActive(content, isUser, type = '', extra = {}) {
-      const session = this.sessions.find(s => s.chatId === this.activeChatId)
+      const session = this.sessions.find(s => String(s.id) === String(this.activeId))
       if (!session) return
       session.messages.push({
         content,
@@ -112,13 +168,10 @@ export const useChatStore = defineStore('chat', {
     },
 
     /**
-     * 流式输出：追加或覆盖最后一条消息的内容
-     * （用于 SSE 回调中逐 token 更新 AI 回答）
-     * @param {string} content  要追加的文本
-     * @param {boolean} append  true=追加, false=覆盖
+     * 流式输出：追加/覆盖最后一条消息内容（仅本地渲染，流式结束才保存后端）
      */
     updateStreamContent(content, append = true) {
-      const session = this.sessions.find(s => s.chatId === this.activeChatId)
+      const session = this.sessions.find(s => String(s.id) === String(this.activeId))
       if (!session || session.messages.length === 0) return
       const lastMsg = session.messages[session.messages.length - 1]
       if (append) {
@@ -129,10 +182,23 @@ export const useChatStore = defineStore('chat', {
     },
 
     /**
-     * 更新会话标题（默认取第一条用户消息的前 20 个字）
+     * 持久化一条消息到后端（user/assistant/system）
      */
-    updateSessionTitle(chatId, title) {
-      const session = this.sessions.find(s => s.chatId === chatId)
+    async persistMessage(role, content) {
+      const session = this.sessions.find(s => String(s.id) === String(this.activeId))
+      if (!session || !content) return
+      try {
+        const res = await saveMessage(session.id, role, content)
+        if (res.success && res.title && session.title === '新对话') {
+          session.title = res.title
+        }
+      } catch (e) {
+        console.error('persistMessage failed', e)
+      }
+    },
+
+    updateSessionTitle(id, title) {
+      const session = this.sessions.find(s => String(s.id) === String(id))
       if (session) {
         session.title = title
         session.updatedAt = Date.now()
