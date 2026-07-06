@@ -133,11 +133,12 @@ export const chatWithManus = (message) => {
 }
 
 // ============ 知识库接口 ============
-export const uploadKnowledgeBase = async (file) => {
+export const uploadKnowledgeBase = async (file, onProgress) => {
   const formData = new FormData()
   formData.append('file', file)
   const response = await request.post('/knowledge-base/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress: onProgress
   })
   return response.data
 }
@@ -163,6 +164,9 @@ export const listConversations = async () => {
 }
 export const deleteConversation = async (id) => {
   const res = await request.delete('/conversation/' + id)
+  if (!res.data || res.data.success === false) {
+    throw new Error(res.data?.message || '删除失败')
+  }
   return res.data
 }
 export const getMessages = async (id) => {
@@ -171,6 +175,16 @@ export const getMessages = async (id) => {
 }
 export const saveMessage = async (conversationId, role, content) => {
   const res = await request.post('/conversation/' + conversationId + '/messages', { role, content })
+  return res.data
+}
+export const renameConversation = async (id, title) => {
+  const res = await request.put('/conversation/' + id, { title })
+  return res.data
+}
+
+// ============ 用量额度接口 ============
+export const getUsageToday = async () => {
+  const res = await request.get('/usage/today')
   return res.data
 }
 
@@ -185,5 +199,7 @@ export default {
   listConversations,
   deleteConversation,
   getMessages,
-  saveMessage
+  saveMessage,
+  renameConversation,
+  getUsageToday
 }

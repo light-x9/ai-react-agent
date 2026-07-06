@@ -4,7 +4,8 @@ import {
   createConversation,
   deleteConversation,
   getMessages,
-  saveMessage
+  saveMessage,
+  renameConversation
 } from '@/api'
 
 /**
@@ -56,6 +57,7 @@ export const useChatStore = defineStore('chat', {
             messages: [],
             _loaded: false,
             updatedAt: s.updatedAt,
+            capability: 'chat', // 从后端加载的会话默认为普通对话类型
           }))
           this.activeId = this.sessions[0].id
           await this.loadMessages(this.activeId)
@@ -71,8 +73,9 @@ export const useChatStore = defineStore('chat', {
 
     /**
      * 创建新会话（调后端）
+     * @param {string} [capability] 会话能力类型：'chat' | 'webSearch' | 'knowledgeBase' | 'both'
      */
-    async createSession() {
+    async createSession(capability = 'chat') {
       try {
         const res = await createConversation('新对话')
         if (res.success) {
@@ -82,7 +85,9 @@ export const useChatStore = defineStore('chat', {
             messages: [],
             _loaded: true,
             updatedAt: Date.now(),
+            capability, // 会话能力类型（用于侧边栏图标区分）
           }
+          // capability 不持久化，仅当前页面生命周期有效
           this.sessions.unshift(session)
           this.activeId = res.id
           return res.id
@@ -130,15 +135,16 @@ export const useChatStore = defineStore('chat', {
     },
 
     /**
-     * 删除会话（调后端 + 本地删）
+     * 删除会话（先调后端，成功后才更新本地列表）
+     * @param {number|string} id - 会话 id
+     * @throws 删除失败时抛出错误，由调用方处理
      */
     async deleteSession(id) {
-      try {
-        await deleteConversation(id)
-      } catch (e) {
-        console.error('deleteSession failed', e)
-      }
+      // 先调后端，失败时直接抛出，本地不做任何变更
+      await deleteConversation(id)
+      // 后端成功 → 移除本地
       this.sessions = this.sessions.filter(s => String(s.id) !== String(id))
+      // 若删的是当前激活会话 → 切到别的会话或新建
       if (String(this.activeId) === String(id)) {
         if (this.sessions.length > 0) {
           this.activeId = this.sessions[0].id
@@ -202,6 +208,37 @@ export const useChatStore = defineStore('chat', {
       if (session) {
         session.title = title
         session.updatedAt = Date.now()
+      }
+    },
+
+    /**
+     * 设置会话能力类型（用于侧边栏图标区分）
+     */
+    setCapability(id, capability) {
+      const session = this.sessions.find(s => String(s.id) === String(id))
+      if (session) {
+        session.capability = capability
+      }
+    },
+
+    /**
+     * 重命名会话（调后端 + 更新本地）
+     */
+    async renameSession(id, title) {
+      const session = this.sessions.find(s => String(s.id) === String(id))
+      if (!session || !title || !title.trim()) return
+      const trimmed = title.trim()
+      try {
+        const res = await renameConversation(id, trimmed)
+        if (res.success) {
+          session.title = res.title || trimmed
+          session.updatedAt = Date.now()
+        }
+      } catch (e) {
+        // 后端失败也更新本地，保证用户体验
+        session.title = trimmed
+        session.updatedAt = Date.now()
+        console.error('renameSession failed', e)
       }
     },
   },
