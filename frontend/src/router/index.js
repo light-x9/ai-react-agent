@@ -1,13 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
+  // 根路径直接进入对话页（原独立首页已融合为对话页空状态）
   {
     path: '/',
-    name: 'Home',
-    component: () => import('../views/Home.vue'),
+    name: 'SuperAgent',
+    component: () => import('../views/SuperAgent.vue'),
     meta: {
-      title: '首页 - AI超级智能体应用平台',
-      description: 'AI超级智能体应用平台提供AI智能体对话服务，满足您的各种AI对话需求'
+      title: 'AI 超级智能体 · ReAct 可视化',
+      description: '基于 ReAct 推理框架的 AI Agent 对话平台。前端实时可视化 Thought → Action → Observation 循环，支持 MCP 工具调用与 RAG 知识库检索。',
+      requiresAuth: true
     }
   },
   {
@@ -15,20 +17,14 @@ const routes = [
     name: 'Login',
     component: () => import('../views/Login.vue'),
     meta: {
-      title: '登录 - AI超级智能体',
+      title: '登录 - AI 超级智能体',
       public: true
     }
   },
-  {
-    path: '/super-agent',
-    name: 'SuperAgent',
-    component: () => import('../views/SuperAgent.vue'),
-    meta: {
-      title: 'AI超级智能体 - AI超级智能体应用平台',
-      description: 'AI超级智能体是全能助手，能解答各类专业问题，提供精准建议和解决方案',
-      requiresAuth: true
-    }
-  }
+  // 旧路径兼容（书签/外链），重定向到根路径
+  { path: '/super-agent', redirect: '/' },
+  // 原 Home 组件保留但不挂路由，方便后续回退
+  // { path: '/home', name: 'Home', component: () => import('../views/Home.vue') },
 ]
 
 const router = createRouter({

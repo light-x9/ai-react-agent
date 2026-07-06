@@ -2,37 +2,53 @@
   <div class="chat-container">
     <!-- 聊天记录区域 -->
     <div class="chat-messages" ref="messagesContainer">
-      <!-- 用户尚未发送消息时的欢迎引导 -->
+      <!-- 空状态引导页（无用户消息时展示功能卡片） -->
       <div v-if="!hasUserMessages" class="welcome-panel">
-        <div class="welcome-avatar">
-          <AiAvatarFallback :type="aiType" />
+        <!-- 标题区 -->
+        <div class="welcome-hero">
+          <h2 class="welcome-title">
+            看得见思考过程的 <span class="welcome-accent">AI Agent</span>
+          </h2>
+          <p class="welcome-subtitle">
+            基于 ReAct 推理框架，前端实时可视化每一步思考与工具调用
+          </p>
         </div>
 
-        <!-- 第一句欢迎语 -->
-        <div v-if="messages.length > 0" class="welcome-bubble">
-          <p>{{ messages[0].content }}</p>
-        </div>
-
-        <!-- 能力小组件（点击切换开关） -->
-        <p class="capabilities-label">我能帮你做什么</p>
-        <div class="capability-widgets">
-          <div
-            v-for="cap in capabilities"
-            :key="cap.key"
-            :class="['capability-widget', { active: activeCaps[cap.key] }]"
-            @click="toggleCap(cap.key)"
-          >
-            <span class="cap-icon-wrap" :style="{ background: activeCaps[cap.key] ? cap.color : cap.bg }">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" :stroke="activeCaps[cap.key] ? '#fff' : cap.color" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="M21 21l-4.35-4.35"/>
+        <!-- 功能卡片 -->
+        <div class="feature-cards">
+          <article class="feature-card">
+            <div class="feature-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
               </svg>
-            </span>
-            <div class="cap-text">
-              <span class="cap-name">{{ cap.name }}</span>
-              <span class="cap-desc">{{ cap.desc }}</span>
             </div>
-          </div>
+            <h3 class="feature-card-title">思维链可视化</h3>
+            <p class="feature-card-text">Thought / Action / Observation 三阶段时间线，渐进式动画呈现，完整展示 AI 推理路径。</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <path d="M8 21h8M12 17v4" />
+              </svg>
+            </div>
+            <h3 class="feature-card-title">工具调用面板</h3>
+            <p class="feature-card-text">每次 Action 以卡片形式展示工具名称与参数，支持展开查看完整请求和响应 JSON。</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-card-icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                <path d="M8 7h8M8 11h6" />
+              </svg>
+            </div>
+            <h3 class="feature-card-title">RAG 知识库</h3>
+            <p class="feature-card-text">上传文档自动分块索引，Query Rewrite 优化检索，AI 结合知识库回答专业领域问题。</p>
+          </article>
         </div>
 
         <!-- 建议提问卡片 -->
@@ -294,117 +310,94 @@ onMounted(() => {
   bottom: 120px;
 }
 
-/* ---------- 欢迎引导面板 ---------- */
+/* ---------- 空状态引导页 ---------- */
 .welcome-panel {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
-  padding: 40px 0 24px;
+  gap: 18px;
+  padding: 32px 16px 24px;
   animation: fadeUp 0.5s ease-out;
 }
 
-.welcome-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  overflow: hidden;
-  box-shadow: 0 4px 20px rgba(79, 70, 229, 0.15);
+.welcome-hero {
+  text-align: center;
+  margin-bottom: 4px;
 }
 
-.welcome-bubble {
-  max-width: 85%;
-  padding: 16px 20px;
-  border-radius: 16px;
-  background: var(--accent-bg);
-  border: 1px solid rgba(79, 70, 229, 0.08);
-  color: var(--text-secondary);
-}
-
-.welcome-bubble p {
-  font-family: var(--font-body);
-  font-size: 0.9375rem;
-  line-height: 1.7;
-}
-
-.capabilities-label {
-  font-family: var(--font-body);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.capability-widgets {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-  max-width: 480px;
-  width: 100%;
-}
-
-.capability-widget {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: var(--bg-elevated);
-  border: 1.5px solid var(--border-subtle);
-  cursor: pointer;
-  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s, background 0.2s;
-  text-align: left;
-}
-
-.capability-widget:hover {
-  border-color: var(--border-active);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-  transform: translateY(-2px);
-}
-
-.capability-widget:active {
-  transform: translateY(0);
-}
-
-.capability-widget.active {
-  border-color: var(--accent);
-  background: var(--accent-bg);
-  box-shadow: 0 2px 12px rgba(79, 70, 229, 0.12);
-}
-
-.cap-icon-wrap {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: background 0.2s;
-}
-
-.cap-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.cap-name {
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  font-weight: 600;
+.welcome-title {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
 }
 
-.cap-desc {
+.welcome-accent {
+  background: linear-gradient(135deg, #818cf8, #6366f1 60%, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.welcome-subtitle {
+  margin-top: 8px;
   font-family: var(--font-body);
-  font-size: 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
   color: var(--text-tertiary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+/* ---------- 功能卡片 ---------- */
+.feature-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  width: 100%;
+  max-width: 720px;
+}
+
+.feature-card {
+  padding: 20px 18px;
+  border-radius: 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+
+.feature-card:hover {
+  border-color: var(--border-active);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 24px rgba(79,70,229,0.08);
+}
+
+.feature-card-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.feature-card-title {
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 5px;
+}
+
+.feature-card-text {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text-tertiary);
 }
 
 /* ---------- 建议提问 ---------- */
@@ -721,6 +714,7 @@ onMounted(() => {
   .message-content { font-size: 0.875rem; }
   .chat-input { padding: 10px 12px 12px; }
   .quick-cap-bar { padding: 8px 12px 0; }
+  .feature-cards { grid-template-columns: 1fr; gap: 12px; max-width: 420px; }
 }
 
 @media (max-width: 480px) {
@@ -728,7 +722,8 @@ onMounted(() => {
   .message-bubble { padding: 10px 14px; }
   .message-content { font-size: 0.8125rem; }
   .chat-messages { bottom: 120px; }
-  .welcome-panel { padding: 24px 0 16px; }
-  .capability-widgets { grid-template-columns: 1fr; gap: 8px; }
+  .welcome-panel { padding: 20px 12px 16px; }
+  .welcome-title { font-size: 1.25rem; }
+  .feature-card { padding: 16px 14px; }
 }
 </style>
