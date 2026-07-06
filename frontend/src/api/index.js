@@ -153,6 +153,26 @@ export const deleteKnowledgeFile = async (sourceName) => {
   return response.data
 }
 
+// 批量删除知识库文件
+export const batchDeleteKnowledgeFiles = async (sourceNames) => {
+  const response = await request.post('/knowledge-base/files/batch-delete', sourceNames)
+  return response.data
+}
+
+// 预览文件内容
+export const previewKnowledgeFile = async (sourceName) => {
+  const response = await request.get('/knowledge-base/files/' + encodeURIComponent(sourceName) + '/preview')
+  return response.data
+}
+
+// 检索测试
+export const searchTestKnowledge = async (query, sourceName) => {
+  const body = { query }
+  if (sourceName) body.sourceName = sourceName
+  const response = await request.post('/knowledge-base/search-test', body)
+  return response.data
+}
+
 // ============ 对话管理接口 ============
 export const createConversation = async (title) => {
   const res = await request.post('/conversation', { title })
@@ -193,6 +213,9 @@ export default {
   uploadKnowledgeBase,
   listKnowledgeFiles,
   deleteKnowledgeFile,
+  batchDeleteKnowledgeFiles,
+  previewKnowledgeFile,
+  searchTestKnowledge,
   login,
   register,
   createConversation,

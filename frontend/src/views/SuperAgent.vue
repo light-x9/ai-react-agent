@@ -43,13 +43,14 @@
 
     <!-- ====== Manage Dialog ====== -->
     <transition name="modal">
-      <div v-if="showManage" class="modal-overlay" @click.self="showManage = false">
-        <div class="modal-dialog">
+      <div v-if="showManage" class="modal-overlay" @click.self="closeManageDialog">
+        <div class="modal-dialog modal-lg">
           <div class="modal-header">
             <h3>知识库文件</h3>
-            <span class="modal-close" @click="showManage = false">&times;</span>
+            <span class="modal-close" @click="closeManageDialog">&times;</span>
           </div>
           <div class="modal-body">
+            <!-- 上传区域 -->
             <div
               class="drop-zone"
               :class="{ active: dragOver, uploading: uploading }"
@@ -72,28 +73,87 @@
                 </div>
               </template>
             </div>
+            <!-- 校验错误提示 -->
+            <div v-if="fileValidationError" class="file-error-tip">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+              {{ fileValidationError }}
+            </div>
+            <!-- 已选文件信息（校验通过但未上传时显示） -->
+            <div v-else-if="selectedFile && !uploading" class="file-selected-tip">
+              <span class="file-selected-name">{{ selectedFile.name }}</span>
+              <span class="file-selected-size">{{ formatFileSize(selectedFile.size) }}</span>
+              <button class="file-selected-upload" @click="doUpload(selectedFile)">确认上传</button>
+              <button class="file-selected-cancel" @click="selectedFile = null">取消</button>
+            </div>
+
+            <!-- 文件列表 -->
             <div v-if="loadingFiles" class="modal-loading">加载中...</div>
             <div v-else-if="uploadedFiles.length === 0" class="modal-empty">
-              暂无上传文件，点击“上传”按钮添加文档
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="9" y1="13" x2="15" y2="13"/>
+                <line x1="9" y1="17" x2="13" y2="17"/>
+              </svg>
+              <p>暂无知识库文档</p>
+              <span>点击上方上传区域添加 .txt / .md 文件</span>
             </div>
-            <div v-else class="file-list">
-              <div v-for="file in uploadedFiles" :key="file.source" class="file-row">
-                <span class="file-name">{{ file.source }}</span>
-                <span class="file-chunks">{{ file.chunks }} 个分块</span>
-                <button class="file-delete-btn" @click="confirmDelete(file.source)" :disabled="deletingFile === file.source">
-                  {{ deletingFile === file.source ? '...' : '删除' }}
+            <template v-else>
+              <!-- 批量操作栏 -->
+              <div class="file-toolbar">
+                <label class="toolbar-checkbox">
+                  <input type="checkbox" :checked="selectedFiles.size === uploadedFiles.length && uploadedFiles.length > 0" @change="toggleSelectAll" />
+                  <span>全选（{{ selectedFiles.size }}/{{ uploadedFiles.length }}）</span>
+                </label>
+                <button class="toolbar-btn toolbar-btn-danger" @click="confirmBatchDelete" :disabled="selectedFiles.size === 0">
+                  删除选中（{{ selectedFiles.size }}）
                 </button>
               </div>
-            </div>
+              <!-- 文件列表 -->
+              <div class="file-list">
+                <div v-for="file in uploadedFiles" :key="file.source" class="file-row" :class="{ 'file-row-selected': selectedFiles.has(file.source) }">
+                  <input type="checkbox" class="file-checkbox" :checked="selectedFiles.has(file.source)" @change="toggleSelect(file.source)" />
+                  <div class="file-info">
+                    <div class="file-line1">
+                      <span class="file-name" :title="'预览 ' + file.source" @click="openPreview(file.source)">{{ file.source }}</span>
+                      <span class="file-badge" :class="statusBadge[file.status]?.cls || 'badge-success'">{{ statusBadge[file.status]?.label || '已完成' }}</span>
+                    </div>
+                    <div class="file-line2">
+                      <span class="file-meta">{{ formatFileSize(file.fileSize) }}</span>
+                      <span class="file-meta-sep">·</span>
+                      <span class="file-meta">{{ file.charCount?.toLocaleString() || '—' }} 字符</span>
+                      <span class="file-meta-sep">·</span>
+                      <span class="file-meta">{{ file.chunks }} 个分块</span>
+                      <span class="file-meta-sep">·</span>
+                      <span class="file-meta">{{ formatUploadTime(file.uploadedAt) }}</span>
+                    </div>
+                  </div>
+                  <div class="file-actions">
+                    <button class="file-action-btn" title="预览" @click="openPreview(file.source)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                    <button class="file-action-btn" title="覆盖更新" @click="triggerReUpload(file.source)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                    </button>
+                    <button class="file-action-btn file-action-danger" title="删除" @click="confirmDelete(file.source)" :disabled="deletingFile === file.source">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <!-- 检索测试区（功能保留，后续版本再展示） -->
           </div>
           <div class="modal-footer">
-            <button class="modal-btn" @click="showManage = false">关闭</button>
+            <button class="modal-btn-text modal-btn-danger-text" @click="clearAll" :disabled="uploadedFiles.length === 0">清空全部</button>
+            <button class="modal-btn" @click="closeManageDialog">关闭</button>
           </div>
         </div>
       </div>
     </transition>
 
-    <!-- ====== Delete Confirm Dialog ====== -->
+    <!-- ====== Delete Confirm Dialog (单条) ====== -->
     <transition name="modal">
       <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="showDeleteConfirm = false">
         <div class="modal-dialog modal-sm">
@@ -106,6 +166,49 @@
           <div class="modal-footer">
             <button class="modal-btn modal-btn-cancel" @click="showDeleteConfirm = false">取消</button>
             <button class="modal-btn modal-btn-danger" @click="doDelete">删除</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- ====== Batch Delete Confirm Dialog ====== -->
+    <transition name="modal">
+      <div v-if="showBatchDeleteConfirm" class="modal-overlay" @click.self="showBatchDeleteConfirm = false">
+        <div class="modal-dialog modal-sm">
+          <div class="modal-header">
+            <h3>确认批量删除</h3>
+          </div>
+          <div class="modal-body">
+            <p>确定要删除 <strong>{{ deleteTarget }}</strong> 吗？此操作不可撤销。</p>
+          </div>
+          <div class="modal-footer">
+            <button class="modal-btn modal-btn-cancel" @click="showBatchDeleteConfirm = false">取消</button>
+            <button class="modal-btn modal-btn-danger" @click="doBatchDelete">确认删除</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- ====== Preview Dialog ====== -->
+    <transition name="modal">
+      <div v-if="showPreview" class="modal-overlay" @click.self="showPreview = false">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-header">
+            <h3>预览：{{ previewData?.source || '' }}</h3>
+            <span class="modal-close" @click="showPreview = false">&times;</span>
+          </div>
+          <div class="modal-body preview-body">
+            <div v-if="previewLoading" class="modal-loading">加载中...</div>
+            <template v-else-if="previewData">
+              <div class="preview-meta">
+                <span>字符数：{{ previewData.charCount?.toLocaleString() }}</span>
+                <span v-if="previewData.truncated" class="preview-truncated">（仅展示前 2000 字符）</span>
+              </div>
+              <pre class="preview-content">{{ previewData.preview }}</pre>
+            </template>
+          </div>
+          <div class="modal-footer">
+            <button class="modal-btn" @click="showPreview = false">关闭</button>
           </div>
         </div>
       </div>
@@ -148,7 +251,7 @@ import { useChatStore } from '@/stores/chatStore'
 import ChatRoom from '../components/ChatRoom.vue'
 import AppFooter from '../components/AppFooter.vue'
 import SessionSidebar from '../components/SessionSidebar.vue'
-import { chatWithManus, uploadKnowledgeBase, listKnowledgeFiles, deleteKnowledgeFile } from '../api'
+import { chatWithManus, uploadKnowledgeBase, listKnowledgeFiles, deleteKnowledgeFile, batchDeleteKnowledgeFiles, previewKnowledgeFile, searchTestKnowledge } from '../api'
 import { connectSSE } from '../api'
 import { useUserStore } from '@/stores/userStore'
 const USE_MOCK = false  // true=Mock演示, false=真实后端
@@ -243,27 +346,18 @@ const dragOver = ref(false)
 
 const triggerUpload = () => {
   if (uploading.value) return
+  reUploadSource.value = ''
   fileInput.value?.click()
 }
 
+/** 校验通过后才真正上传 */
 const doUpload = async (file) => {
   if (!file) return
-  const ext = file.name.split('.').pop()?.toLowerCase()
-  if (!['txt', 'md'].includes(ext)) {
-    uploadMsg.value = '仅支持 .txt 和 .md 格式文件'
-    uploadSuccess.value = false
-    setTimeout(() => { uploadMsg.value = '' }, 4000)
-    return
-  }
-  if (file.size > 10 * 1024 * 1024) {
-    uploadMsg.value = '文件过大，上限 10MB'
-    uploadSuccess.value = false
-    setTimeout(() => { uploadMsg.value = '' }, 4000)
-    return
-  }
+  if (!validateFile(file)) return  // validateFile 会设置 fileValidationError
+
   uploading.value = true
   uploadProgress.value = 0
-  uploadMsg.value = '正在上传：' + file.name
+  uploadMsg.value = (reUploadSource.value ? '正在覆盖更新：' : '正在上传：') + file.name
   uploadSuccess.value = true
   try {
     const result = await uploadKnowledgeBase(file, (e) => {
@@ -272,28 +366,41 @@ const doUpload = async (file) => {
     uploadMsg.value = result.success ? '上传成功：' + file.name : '上传失败：' + result.message
     uploadSuccess.value = result.success
     if (result.success) {
-      chatStore.addMessageToActive('知识库上传成功：' + result.message, false, 'system')
-      openManageDialog()
+      if (reUploadSource.value) {
+        chatStore.addMessageToActive('已覆盖更新知识库文档：' + file.name, false, 'system')
+        reUploadSource.value = ''
+      } else {
+        chatStore.addMessageToActive('知识库上传成功：' + result.message, false, 'system')
+      }
+      // 弹窗打开时刷新列表
+      if (showManage.value) {
+        const res = await listKnowledgeFiles()
+        if (res.success) uploadedFiles.value = res.files || []
+      }
     }
   } catch (err) {
     uploadMsg.value = '上传失败：' + (err.response?.data?.message || err.message)
     uploadSuccess.value = false
   } finally {
     uploading.value = false
+    selectedFile.value = null
     setTimeout(() => { uploadMsg.value = '' }, 4000)
   }
 }
 
+/** 文件选择 change 事件：校验后展示确认条（不自动上传，由用户确认） */
 const handleFileUpload = (event) => {
   const file = event.target.files?.[0]
-  doUpload(file)
+  if (file && !validateFile(file)) {
+    // 校验失败：fileValidationError 已设置，UI 会展示错误提示
+  }
   if (event.target) event.target.value = ''
 }
 
 const handleDrop = (event) => {
   dragOver.value = false
   const file = event.dataTransfer?.files?.[0]
-  doUpload(file)
+  if (file) validateFile(file)
 }
 
 // ========== Manage Dialog ==========
@@ -303,6 +410,10 @@ const loadingFiles = ref(false)
 
 const openManageDialog = async () => {
   showManage.value = true
+  selectedFiles.value.clear()
+  fileValidationError.value = ''
+  selectedFile.value = null
+  reUploadSource.value = ''
   loadingFiles.value = true
   try {
     const result = await listKnowledgeFiles()
@@ -316,11 +427,80 @@ const openManageDialog = async () => {
   }
 }
 
+// ========== File Validation ==========
+const selectedFile = ref(null)      // 当前选中的待上传文件
+const fileValidationError = ref('')  // 校验错误信息
+
+/** 校验文件：格式 + 大小，不合规返回 false */
+const validateFile = (file) => {
+  if (!file) return false
+  fileValidationError.value = ''
+  const ext = file.name.split('.').pop()?.toLowerCase()
+  if (!['txt', 'md'].includes(ext)) {
+    fileValidationError.value = '格式不支持：仅接受 .txt / .md'
+    return false
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    fileValidationError.value = '文件过大：单文件上限 10MB'
+    return false
+  }
+  selectedFile.value = file
+  return true
+}
+
+/** 文件选中变化时触发 */
+const handleFileSelected = (event) => {
+  const file = event.target.files?.[0]
+  if (file) validateFile(file)
+  if (event.target) event.target.value = ''
+}
+
+/** 显示文件大小人类可读 */
+const formatFileSize = (bytes) => {
+  if (!bytes) return '—'
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+/** 显示上传时间人类可读 */
+const formatUploadTime = (ts) => {
+  if (!ts) return '—'
+  const d = new Date(ts)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** 状态徽章：completed / pending / error */
+const statusBadge = {
+  completed: { label: '已完成', cls: 'badge-success' },
+  pending:   { label: '处理中', cls: 'badge-pending' },
+  error:     { label: '失败',   cls: 'badge-error' },
+}
+
+// ========== Selection ==========
+const selectedFiles = ref(new Set())  // 多选用 Set<string>(source)
+
+const toggleSelect = (source) => {
+  const s = selectedFiles.value
+  if (s.has(source)) s.delete(source)
+  else s.add(source)
+}
+
+const toggleSelectAll = () => {
+  if (selectedFiles.value.size === uploadedFiles.value.length) {
+    selectedFiles.value.clear()
+  } else {
+    uploadedFiles.value.forEach(f => selectedFiles.value.add(f.source))
+  }
+}
+
 // ========== Delete ==========
 const showDeleteConfirm = ref(false)
 const deleteTarget = ref('')
 const deleteTargetChunks = ref(0)
 const deletingFile = ref('')
+const showBatchDeleteConfirm = ref(false)
 
 const confirmDelete = (sourceName) => {
   const file = uploadedFiles.value.find(f => f.source === sourceName)
@@ -336,6 +516,7 @@ const doDelete = async () => {
     const result = await deleteKnowledgeFile(deleteTarget.value)
     if (result.success) {
       uploadedFiles.value = uploadedFiles.value.filter(f => f.source !== deleteTarget.value)
+      selectedFiles.value.delete(deleteTarget.value)
       chatStore.addMessageToActive('已删除：' + result.message, false, 'system')
     }
   } catch (err) {
@@ -343,6 +524,101 @@ const doDelete = async () => {
   } finally {
     deletingFile.value = ''
   }
+}
+
+const confirmBatchDelete = () => {
+  if (selectedFiles.value.size === 0) return
+  deleteTarget.value = `选中的 ${selectedFiles.value.size} 个文件`
+  showBatchDeleteConfirm.value = true
+}
+
+const doBatchDelete = async () => {
+  showBatchDeleteConfirm.value = false
+  deletingFile.value = '__batch__'
+  try {
+    const names = Array.from(selectedFiles.value)
+    const result = await batchDeleteKnowledgeFiles(names)
+    if (result.success) {
+      uploadedFiles.value = uploadedFiles.value.filter(f => !selectedFiles.value.has(f.source))
+      selectedFiles.value.clear()
+      chatStore.addMessageToActive(`已批量删除 ${result.deleted} 个文件`, false, 'system')
+    }
+  } catch (err) {
+    console.error('Batch delete failed', err)
+  } finally {
+    deletingFile.value = ''
+  }
+}
+
+const clearAll = () => {
+  deleteTarget.value = '全部文件'
+  showBatchDeleteConfirm.value = true
+}
+
+// ========== Preview ==========
+const showPreview = ref(false)
+const previewData = ref(null)
+const previewLoading = ref(false)
+
+const openPreview = async (sourceName) => {
+  previewLoading.value = true
+  showPreview.value = true
+  previewData.value = null
+  try {
+    const result = await previewKnowledgeFile(sourceName)
+    previewData.value = result.success ? result.preview : null
+    if (!result.success) previewData.value = { source: sourceName, preview: '预览失败：' + result.message, charCount: 0, truncated: false }
+  } catch (err) {
+    previewData.value = { source: sourceName, preview: '预览失败：' + err.message, charCount: 0, truncated: false }
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+// ========== Re-upload (覆盖更新) ==========
+const reUploadSource = ref('')  // 正在覆盖更新的文件名（用于显示提示）
+
+const triggerReUpload = (sourceName) => {
+  reUploadSource.value = sourceName
+  fileInput.value?.click()
+}
+
+// ========== Search Test ==========
+const searchTestQuery = ref('')
+const searchTestSource = ref('')  // '' = 全部文件，或指定某个 source
+const searchTestLoading = ref(false)
+const searchTestHits = ref([])
+const searchTestDone = ref(false)  // 是否已执行过搜索
+
+const doSearchTest = async () => {
+  if (!searchTestQuery.value.trim()) return
+  searchTestLoading.value = true
+  searchTestHits.value = []
+  searchTestDone.value = false
+  try {
+    const result = await searchTestKnowledge(
+      searchTestQuery.value.trim(),
+      searchTestSource.value || undefined
+    )
+    searchTestHits.value = result.success ? (result.hits || []) : []
+    searchTestDone.value = true
+  } catch (err) {
+    console.error('search test failed', err)
+    searchTestDone.value = true
+  } finally {
+    searchTestLoading.value = false
+  }
+}
+
+/** 关闭管理弹窗时清理状态 */
+const closeManageDialog = () => {
+  showManage.value = false
+  selectedFiles.value.clear()
+  selectedFile.value = null
+  fileValidationError.value = ''
+  reUploadSource.value = ''
+  showPreview.value = false
+  previewData.value = null
 }
 
 // ========== Chat ==========
@@ -748,10 +1024,7 @@ const logout = () => {
 onMounted(async () => {
   // 初始化：从后端加载会话列表与历史消息（无会话则新建）
   await chatStore.init()
-  // 仅在空会话时显示欢迎语
-  if (chatStore.activeMessages.length === 0) {
-    chatStore.addMessageToActive('你好，我是 AI 超级智能体。我能搜索网页、调用工具、管理知识库，帮你完成复杂任务。上传 .txt/.md 文件可建立专属知识库，有问必答。', false)
-  }
+  // 空会话时不塞欢迎语——ChatRoom 的空状态引导页（功能卡片）自然展示
 })
 
 onBeforeUnmount(() => {
@@ -1085,6 +1358,298 @@ onBeforeUnmount(() => {
 }
 .file-delete-btn:hover { background: rgba(239, 68, 68, 0.15); }
 .file-delete-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* === Manage Dialog 扩展 === */
+.modal-dialog.modal-lg { max-width: 600px; width: 92%; }
+
+/* 校验错误提示 */
+.file-error-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #dc2626;
+  font-size: 0.8125rem;
+}
+/* 选中文件展示条 */
+.file-selected-tip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--accent-bg);
+  border: 1px solid var(--border-active);
+  font-size: 0.8125rem;
+}
+.file-selected-name { color: var(--text-primary); font-weight: 500; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-selected-size { color: var(--text-tertiary); font-size: 0.75rem; }
+.file-selected-upload {
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  font-size: 0.75rem;
+  border: none;
+  cursor: pointer;
+}
+.file-selected-upload:hover { background: #4338ca; }
+.file-selected-cancel {
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+}
+.file-selected-cancel:hover { background: #e5e7eb; }
+
+/* 批量操作栏 */
+.file-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.toolbar-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.toolbar-checkbox input { accent-color: var(--accent); }
+.toolbar-btn {
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: white;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.toolbar-btn:disabled { opacity: 0.4; cursor: default; }
+.toolbar-btn-danger:not(:disabled):hover {
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* 文件列表行（增强版） */
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.file-row:hover {
+  background: white;
+  border-color: var(--border-active);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.06);
+}
+.file-row-selected { background: var(--accent-bg); border-color: var(--border-active); }
+.file-checkbox { accent-color: var(--accent); flex-shrink: 0; }
+.file-info { flex: 1; min-width: 0; }
+.file-line1 { display: flex; align-items: center; gap: 8px; }
+.file-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 0.15s;
+}
+.file-name:hover { text-decoration-color: var(--accent); }
+.file-line2 {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  flex-wrap: wrap;
+}
+.file-meta-sep { opacity: 0.5; margin: 0 2px; }
+
+/* 状态徽章 */
+.file-badge {
+  font-size: 0.625rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.badge-success { background: rgba(16, 185, 129, 0.1); color: #059669; }
+.badge-pending { background: rgba(245, 158, 11, 0.1); color: #b45309; }
+.badge-error   { background: rgba(239, 68, 68, 0.1); color: #dc2626; }
+
+/* 操作按钮组 */
+.file-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.file-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.file-action-btn:hover {
+  background: white;
+  border-color: var(--border-subtle);
+  color: var(--accent);
+}
+.file-action-danger:hover {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.2);
+  color: #dc2626;
+}
+.file-action-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* 空状态 */
+.modal-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 0;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+.modal-empty p { font-size: 0.9375rem; color: var(--text-secondary); margin: 0; }
+.modal-empty span { font-size: 0.8125rem; }
+
+/* 检索测试 */
+.search-test {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.search-test-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 10px;
+}
+.search-test-bar {
+  display: flex;
+  gap: 8px;
+}
+.search-test-input {
+  flex: 1;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.2s;
+}
+.search-test-input:focus { border-color: var(--accent); background: white; }
+.search-test-select {
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  font-size: 0.8125rem;
+  background: white;
+  color: var(--text-primary);
+  outline: none;
+  max-width: 140px;
+}
+.search-test-btn {
+  padding: 7px 16px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  font-size: 0.8125rem;
+  border: none;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+.search-test-btn:hover { background: #4338ca; }
+.search-test-btn:disabled { opacity: 0.6; cursor: default; }
+.search-test-results { margin-top: 10px; }
+.search-test-empty { text-align: center; color: var(--text-tertiary); font-size: 0.8125rem; padding: 12px 0; }
+.search-test-hits-info { font-size: 0.75rem; color: var(--text-tertiary); margin-bottom: 6px; }
+.search-test-hit {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 6px;
+}
+.hit-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.hit-source { font-size: 0.75rem; font-weight: 500; color: var(--accent); }
+.hit-score { font-size: 0.6875rem; color: var(--text-tertiary); font-family: var(--font-mono); }
+.hit-snippet { font-size: 0.8125rem; color: var(--text-secondary); line-height: 1.5; }
+
+/* 预览弹窗 */
+.preview-body { display: flex; flex-direction: column; }
+.preview-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  margin-bottom: 10px;
+}
+.preview-truncated { color: #b45309; }
+.preview-content {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  margin: 0;
+}
+
+/* 底部按钮扩展 */
+.modal-btn-text {
+  font-size: 0.8125rem;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: color 0.2s;
+}
+.modal-btn-text:disabled { opacity: 0.4; cursor: default; }
+.modal-btn-danger-text:not(:disabled):hover { color: #dc2626; }
 
 /* === 能力提示横幅 === */
 .cap-hint-banner {
