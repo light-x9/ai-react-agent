@@ -4,8 +4,14 @@ import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
+import com.light.reactagent.service.UsageService;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.List;
@@ -13,41 +19,118 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 缃戦〉鎼滅储宸ュ叿
+ * 网页搜索工具（百度，via SearchAPI）
+ * <p>
+ * 单次调用 = "搜索 + 抓取前 N 个结果的页面正文"，直接返回给用户的是结构化可读文本。
+ * 避免 LLM 需要主动再调 scrapeWebPage 才能拿到内容的二步调用不稳问题。
+ * 每次调用计入用户每日联网搜索额度，超限则拒绝并提示。
  */
+@Component
 public class WebSearchTool {
 
-    // SearchAPI 鐨勬悳绱㈡帴鍙ｅ湴鍧€
     private static final String SEARCH_API_URL = "https://www.searchapi.io/api/v1/search";
 
-    private final String apiKey;
+    /** 单次搜索抓取的最大结果条数 */
+    private static final int MAX_RESULTS = 3;
 
-    public WebSearchTool(String apiKey) {
-        this.apiKey = apiKey;
+    /** 每个 URL 抓取的正文最大字符数 */
+    private static final int PAGE_TEXT_MAX_LEN = 500;
+
+    /** 抓取网页时的超时时间（毫秒） */
+    private static final int SCRAPE_TIMEOUT_MS = 5000;
+
+    private final UsageService usageService;
+
+    @Value("${search-api.api-key}")
+    private String apiKey;
+
+    public WebSearchTool(UsageService usageService) {
+        this.usageService = usageService;
     }
 
     @Tool(description = "Search for information from Baidu Search Engine")
     public String searchWeb(
             @ToolParam(description = "Search query keyword") String query) {
+
+        // 额度检查：每次搜索调用 +1，超限拒绝
+        String userId = currentUserId();
+        if (userId != null && !usageService.checkAndIncrementWebSearch(userId)) {
+            return "今日联网搜索已达上限，请明日再试，或改用知识库回答。";
+        }
+
         Map<String, Object> paramMap = new HashMap<>();
         paramMap.put("q", query);
         paramMap.put("api_key", apiKey);
         paramMap.put("engine", "baidu");
         try {
             String response = HttpUtil.get(SEARCH_API_URL, paramMap);
-            // 鍙栧嚭杩斿洖缁撴灉鐨勫墠 5 鏉?
+            // 取返回结果前 N 条
             JSONObject jsonObject = JSONUtil.parseObj(response);
-            // 鎻愬彇 organic_results 閮ㄥ垎
             JSONArray organicResults = jsonObject.getJSONArray("organic_results");
-            List<Object> objects = organicResults.subList(0, 5);
-            // 鎷兼帴鎼滅储缁撴灉涓哄瓧绗︿覆
-            String result = objects.stream().map(obj -> {
-                JSONObject tmpJSONObject = (JSONObject) obj;
-                return tmpJSONObject.toString();
-            }).collect(Collectors.joining(","));
-            return result;
+            if (organicResults == null || organicResults.isEmpty()) {
+                return "未搜索到相关结果";
+            }
+            List<JSONObject> topItems = organicResults.subList(0, Math.min(MAX_RESULTS, organicResults.size()))
+                    .stream().map(o -> (JSONObject) o).collect(Collectors.toList());
+
+            // 对每条结果：抓取页面正文，整合后直接返回可读文本
+            StringBuilder sb = new StringBuilder();
+            for (JSONObject item : topItems) {
+                String title = item.getStr("title", "");
+                String link = item.getStr("link", "");
+                String snippet = item.getStr("snippet", "");
+                sb.append("【").append(title).append("】\n");
+                sb.append("URL: ").append(link).append("\n");
+                sb.append("摘要: ").append(snippet).append("\n");
+
+                // 抓取正文，失败就降级只展示摘要
+                String pageText = fetchPageText(link);
+                if (pageText != null) {
+                    sb.append("正文: ").append(pageText).append("\n");
+                }
+                sb.append("\n");
+            }
+            return sb.toString().trim();
         } catch (Exception e) {
             return "Error searching Baidu: " + e.getMessage();
         }
+    }
+
+    /**
+     * 抓取 URL 的页面正文文本
+     *
+     * @param url 页面链接
+     * @return 正文字符串（已截断）；任意失败返回 null，由调用方降级展示摘要兜底
+     */
+    private String fetchPageText(String url) {
+        try {
+            Document doc = Jsoup.connect(url)
+                    .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+                    .timeout(SCRAPE_TIMEOUT_MS)
+                    .followRedirects(true)
+                    .get();
+            String text = doc.body() != null ? doc.body().text() : doc.text();
+            // 截断空白 + 长度控制
+            text = text.replaceAll("\\s+", " ").trim();
+            if (text.length() > PAGE_TEXT_MAX_LEN) {
+                text = text.substring(0, PAGE_TEXT_MAX_LEN) + "...";
+            }
+            return text;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 从安全上下文取当前用户名（Agent 异步线程已传播 SecurityContext）
+     */
+    private String currentUserId() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated()
+                && auth.getPrincipal() != null
+                && !"anonymousUser".equals(auth.getPrincipal())) {
+            return auth.getName();
+        }
+        return null;
     }
 }

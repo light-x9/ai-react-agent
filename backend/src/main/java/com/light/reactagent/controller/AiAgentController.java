@@ -2,6 +2,9 @@ package com.light.reactagent.controller;
 
 import com.light.reactagent.agent.LightManus;
 import com.light.reactagent.config.AgentRateLimiter;
+import com.light.reactagent.service.KnowledgeRetrievalService;
+import com.light.reactagent.service.UsageService;
+import com.light.reactagent.tools.ToolRegistration;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.ai.chat.model.ChatModel;
@@ -18,14 +21,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * AI Agent 流式接口
+ * <p>
+ * 按前端能力开关动态装配工具子集：纯对话/网页搜索/知识库/双开。
  */
 @RestController
 @RequestMapping("/ai")
 public class AiAgentController {
-
-    // 合并后的工具集（本地工具 + MCP 外部工具），供 SuperAgent 使用
-    @Resource
-    private ToolCallback[] allToolsWithMcp;
 
     @Resource
     private ChatModel dashscopeChatModel;
@@ -33,30 +34,30 @@ public class AiAgentController {
     @Resource
     private AgentRateLimiter rateLimiter;
 
-    /**
-     * 流式调用 SuperAgent，支持基于 chatId 的多轮对话记忆
-     * <p>
-     * 需 JWT 认证（SecurityConfig 保护 /ai/**）。限流 key 优先用已认证用户名，无则回退 IP。
-     *
-     * @param request     包含 message（当前用户消息）和 history（历史上下文，可选）
-     * @param httpRequest 用于提取客户端 IP（限流回退 key）
-     */
+    @Resource
+    private UsageService usageService;
+
+    @Resource
+    private ToolRegistration toolRegistration;
+
+    @Resource
+    private KnowledgeRetrievalService knowledgeRetrievalService;
+
     @PostMapping(value = "/manus/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE + ";charset=UTF-8")
     public SseEmitter doChatWithManus(@RequestBody ChatRequest request, HttpServletRequest httpRequest) {
-        // 1. 并发限流：优先按用户，回退 IP
+        // 1. 并发限流
         String clientKey = extractPrincipal(httpRequest);
         if (!rateLimiter.tryAcquire(clientKey)) {
-            SseEmitter rejected = new SseEmitter();
-            try {
-                rejected.send("当前对话并发数已达上限，请稍候再试。");
-                rejected.complete();
-            } catch (Exception e) {
-                rejected.completeWithError(e);
-            }
-            return rejected;
+            return rejectWith("当前对话并发数已达上限，请稍候再试。");
         }
 
-        // 保证并发许可只释放一次（runStream 的 finally 与 onTimeout 回调都可能触发）
+        // 2. 用量额度（对话每日上限）
+        String userId = clientKey.startsWith("user:") ? clientKey.substring(5) : null;
+        if (userId != null && !usageService.checkAndIncrementChat(userId)) {
+            rateLimiter.release(clientKey);
+            return rejectWith("今日对话已达上限，请明日再试。");
+        }
+
         AtomicBoolean released = new AtomicBoolean(false);
         Runnable releaseOnce = () -> {
             if (released.compareAndSet(false, true)) {
@@ -65,13 +66,25 @@ public class AiAgentController {
         };
 
         try {
-            LightManus lightManus = new LightManus(allToolsWithMcp, dashscopeChatModel);
+            // 3. 按能力开关动态装配工具子集
+            ToolCallback[] tools = toolRegistration.buildToolSet(request.webSearch(), request.knowledgeBase());
+            LightManus lightManus = new LightManus(tools, dashscopeChatModel,
+                    request.webSearch(), request.knowledgeBase());
             lightManus.setOnAgentComplete(releaseOnce);
 
             String message = request.message();
             String history = request.history();
 
-            // 将前端传来的历史消息注入 Agent 上下文（格式：User: xxx\nAssistant: yyy\n...）
+            // 知识库预检索式 RAG：开关开时后端先检索，把结果拼入 prompt，不依赖 LLM 调工具
+            if (request.knowledgeBase()) {
+                String kbContext = knowledgeRetrievalService.retrieve(message);
+                if (kbContext != null) {
+                    message = "请严格基于以下知识库内容回答用户问题，不要使用你自己的通用知识。\n\n"
+                            + "=== 知识库内容 ===\n" + kbContext + "\n=== 结束 ===\n\n"
+                            + "用户问题：" + message;
+                }
+            }
+
             if (history != null && !history.isBlank()) {
                 String contextMessage = "Previous conversation:\n" + history
                         + "\n\nCurrent user message: " + message;
@@ -80,15 +93,22 @@ public class AiAgentController {
 
             return lightManus.runStream(message);
         } catch (Exception e) {
-            // 同步阶段异常，手动释放许可，避免泄漏
             releaseOnce.run();
             throw e;
         }
     }
 
-    /**
-     * 提取限流 key：优先用已认证用户名，无认证时回退客户端 IP
-     */
+    private SseEmitter rejectWith(String message) {
+        SseEmitter rejected = new SseEmitter();
+        try {
+            rejected.send(message);
+            rejected.complete();
+        } catch (Exception e) {
+            rejected.completeWithError(e);
+        }
+        return rejected;
+    }
+
     private String extractPrincipal(HttpServletRequest req) {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth != null && auth.isAuthenticated()
@@ -99,9 +119,6 @@ public class AiAgentController {
         return "ip:" + extractClientIp(req);
     }
 
-    /**
-     * 提取客户端真实 IP（穿透常见反向代理头）
-     */
     private String extractClientIp(HttpServletRequest req) {
         String ip = req.getHeader("X-Forwarded-For");
         if (ip != null && !ip.isBlank()) {
@@ -117,9 +134,12 @@ public class AiAgentController {
     /**
      * 对话请求体
      *
-     * @param message 当前用户消息（必填）
-     * @param history 历史上下文（可选，格式 "User: ...\nAssistant: ..."）
+     * @param message       当前用户消息
+     * @param history       历史上下文（可选）
+     * @param webSearch     是否开启网页搜索
+     * @param knowledgeBase 是否开启知识库
      */
-    public record ChatRequest(String message, String history) {
+    public record ChatRequest(String message, String history,
+                              boolean webSearch, boolean knowledgeBase) {
     }
 }
