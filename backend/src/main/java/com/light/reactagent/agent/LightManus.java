@@ -41,20 +41,33 @@ public class LightManus extends ToolCallAgent {
         }
     }
 
-    /** 纯对话模式：无工具，需联网/知识库时引导用户开开关，禁止编造 */
+    /**
+     * 地图工具说明 —— 追加到所有模式 prompt 末尾，引导 LLM 对地理/天气/路线类问题调用高德 MCP 工具
+     */
+    private static final String MAP_TOOLS_NOTICE = """
+
+            MAP TOOLS AVAILABLE — You have access to AMap (Gaode Map) tools:
+            - maps_weather: query city weather
+            - maps_text_search / maps_around_search: search POI / nearby places
+            - maps_direction_driving / maps_direction_walking / maps_direction_transit_integrated: route planning
+            - maps_geo / maps_regeocode: geocoding / reverse geocoding
+            Use these tools when the user asks about locations, weather, nearby places, or routes.
+            """;
+
+    /** 纯对话模式：无联网/知识库工具，但地图工具可用；需联网/知识库时引导用户开开关，禁止编造 */
     private static final String PLAIN_CHAT_PROMPT = """
-            You are LightManus, an AI assistant. Currently in PLAIN CHAT mode (no tools enabled).
-            Answer questions based on your own knowledge.
+            You are LightManus, an AI assistant. Currently in PLAIN CHAT mode (web search and knowledge base disabled).
+            Answer general questions based on your own knowledge.
 
             CRITICAL LANGUAGE RULE: Respond in the same language as the user (Chinese in → Chinese out).
 
-            IMPORTANT: When the question requires real-time info (news, latest data, weather, prices)
+            IMPORTANT: When the question requires real-time info (news, latest data, prices)
             or needs to search user-uploaded documents, you MUST clearly tell the user:
             "这个问题需要联网/知识库，请在输入框上方开启【网页搜索】或【知识库】开关后再问。"
             NEVER fabricate real-time information you do not actually have.
 
             Keep answers clear and concise.
-            """;
+            """ + MAP_TOOLS_NOTICE;
 
     /** 网页搜索模式 */
     private static final String WEB_SEARCH_PROMPT = """
@@ -69,7 +82,7 @@ public class LightManus extends ToolCallAgent {
             Always cite the source URL when referencing specific facts.
             Never fabricate information that is not present in the search results.
             Present a clear, final answer to the user — not a raw list of links.
-            """;
+            """ + MAP_TOOLS_NOTICE;
 
     /** 知识库模式 */
     private static final String KNOWLEDGE_BASE_PROMPT = """
@@ -84,7 +97,7 @@ public class LightManus extends ToolCallAgent {
             and suggest uploading related documents. Do NOT fabricate.
 
             Base your answer on retrieved content, cite the source filename.
-            """;
+            """ + MAP_TOOLS_NOTICE;
 
     /** 双开模式 */
     private static final String BOTH_PROMPT = """
@@ -95,7 +108,7 @@ public class LightManus extends ToolCallAgent {
             CRITICAL LANGUAGE RULE: Respond in the same language as the user.
 
             Answer in your own words based on tool results. Cite sources (URL or filename).
-            """;
+            """ + MAP_TOOLS_NOTICE;
 
     private static final String NEXT_STEP_PROMPT = """
             Based on user needs, select the appropriate tool to gather information, then answer.
