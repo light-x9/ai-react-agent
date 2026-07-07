@@ -25,7 +25,7 @@ import java.nio.charset.StandardCharsets;
  * 通过 fileId 定位文件，并校验 chatId 归属（防止 A 下载 B 的文件）。
  */
 @RestController
-@RequestMapping("/api/files")
+@RequestMapping("/files")
 @Slf4j
 public class FileDownloadController {
 

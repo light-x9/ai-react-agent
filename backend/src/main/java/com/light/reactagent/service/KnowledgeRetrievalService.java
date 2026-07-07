@@ -47,12 +47,12 @@ public class KnowledgeRetrievalService {
                 .topK(3);
         // 多租户隔离：只检索当前用户的文档
         if (userId != null) {
-            builder.filterExpression("userId == '" + userId + "'");
+            builder.filterExpression("userId == '" + userId.replace("'", "''") + "'");
         }
 
         List<Document> similarDocuments = vectorStore.similaritySearch(builder.build());
         if (similarDocuments.isEmpty()) {
-            log.info("知识库预检索：用户 [{}] 查询 [{}] 无命中", userId, query);
+            log.debug("知识库预检索：用户 [{}] 查询 [{}] 无命中", userId, query);
             return null;
         }
 
@@ -63,7 +63,7 @@ public class KnowledgeRetrievalService {
                 })
                 .collect(java.util.stream.Collectors.joining("\n\n"));
 
-        log.info("知识库预检索：用户 [{}] 查询 [{}] 命中 {} 条", userId, query, similarDocuments.size());
+        log.debug("知识库预检索：用户 [{}] 查询 [{}] 命中 {} 条", userId, query, similarDocuments.size());
         return result;
     }
 

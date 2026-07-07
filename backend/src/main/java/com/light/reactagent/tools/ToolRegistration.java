@@ -1,6 +1,7 @@
 package com.light.reactagent.tools;
 
 import com.light.reactagent.tools.file.FileMetadataManager;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -20,6 +21,7 @@ import java.util.stream.Stream;
  * allTools()/allToolsWithMcp() 提供全量工具（兼容旧路径）。
  * buildToolSet(webSearch, knowledgeBase) 按能力开关动态装配工具子集，供能力开关模式使用。
  */
+@Slf4j
 @Configuration
 public class ToolRegistration {
 
@@ -107,26 +109,24 @@ public class ToolRegistration {
             if (provider != null) {
                 ToolCallback[] mcpTools = provider.getToolCallbacks();
                 // 诊断日志：打印 MCP 工具加载情况
-                System.out.println("[MCP-DIAG] provider=" + provider.getClass().getSimpleName()
-                        + ", mcpTools.length=" + mcpTools.length);
+                log.debug("[MCP-DIAG] provider={}, mcpTools.length={}", provider.getClass().getSimpleName(), mcpTools.length);
                 for (ToolCallback tc : mcpTools) {
-                    System.out.println("[MCP-DIAG]   tool=" + tc.getToolDefinition().name());
+                    log.debug("[MCP-DIAG]   tool={}", tc.getToolDefinition().name());
                 }
                 if (mcpTools.length > 0) {
                     // 直接拼接两个数组，不使用 ToolCallbacks.from()（它会把 ToolCallback[] 当作待解析对象）
                     ToolCallback[] merged = Stream.concat(Arrays.stream(localTools), Arrays.stream(mcpTools))
                             .toArray(ToolCallback[]::new);
-                    System.out.println("[MCP-DIAG] merged total=" + merged.length);
+                    log.debug("[MCP-DIAG] merged total={}", merged.length);
                     return merged;
                 } else {
-                    System.out.println("[MCP-DIAG] WARNING: provider available but 0 MCP tools");
+                    log.warn("[MCP-DIAG] provider available but 0 MCP tools");
                 }
             } else {
-                System.out.println("[MCP-DIAG] WARNING: toolCallbackProvider.getIfAvailable() returned null");
+                log.warn("[MCP-DIAG] toolCallbackProvider.getIfAvailable() returned null");
             }
         } catch (Exception e) {
-            System.out.println("[MCP-DIAG] EXCEPTION: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-            e.printStackTrace();
+            log.warn("[MCP-DIAG] MCP tool loading failed: {} - {}", e.getClass().getSimpleName(), e.getMessage());
         }
         return localTools;
     }

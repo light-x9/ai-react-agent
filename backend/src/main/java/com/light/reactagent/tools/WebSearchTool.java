@@ -19,16 +19,18 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * 网页搜索工具（百度，via SearchAPI）
+ * 网页搜索工具（Google，via Serper）
  * <p>
  * 单次调用 = "搜索 + 抓取前 N 个结果的页面正文"，直接返回给用户的是结构化可读文本。
  * 避免 LLM 需要主动再调 scrapeWebPage 才能拿到内容的二步调用不稳问题。
  * 每次调用计入用户每日联网搜索额度，超限则拒绝并提示。
+ * <p>
+ * Serper API 文档：https://serper.dev/api
  */
 @Component
 public class WebSearchTool {
 
-    private static final String SEARCH_API_URL = "https://www.searchapi.io/api/v1/search";
+    private static final String SERPER_API_URL = "https://google.serper.dev/search";
 
     /** 单次搜索抓取的最大结果条数 */
     private static final int MAX_RESULTS = 3;
@@ -39,16 +41,19 @@ public class WebSearchTool {
     /** 抓取网页时的超时时间（毫秒） */
     private static final int SCRAPE_TIMEOUT_MS = 5000;
 
+    /** Serper API 超时（毫秒） */
+    private static final int SERPER_TIMEOUT_MS = 10000;
+
     private final UsageService usageService;
 
-    @Value("${search-api.api-key}")
+    @Value("${serper.api-key}")
     private String apiKey;
 
     public WebSearchTool(UsageService usageService) {
         this.usageService = usageService;
     }
 
-    @Tool(description = "Search for information from Baidu Search Engine")
+    @Tool(description = "Search for information from Google Search Engine")
     public String searchWeb(
             @ToolParam(description = "Search query keyword") String query) {
 
@@ -58,15 +63,28 @@ public class WebSearchTool {
             return "今日联网搜索已达上限，请明日再试，或改用知识库回答。";
         }
 
-        Map<String, Object> paramMap = new HashMap<>();
-        paramMap.put("q", query);
-        paramMap.put("api_key", apiKey);
-        paramMap.put("engine", "baidu");
         try {
-            String response = HttpUtil.get(SEARCH_API_URL, paramMap);
-            // 取返回结果前 N 条
+            // 构造 Serper POST 请求（JSON body + X-API-KEY header）
+            JSONObject requestBody = JSONUtil.createObj();
+            requestBody.set("q", query);
+            requestBody.set("gl", "cn");       // 地理位置：中国
+            requestBody.set("hl", "zh-cn");    // 语言：中文
+            requestBody.set("num", MAX_RESULTS);
+
+            Map<String, String> headers = new HashMap<>();
+            headers.put("X-API-KEY", apiKey);
+            headers.put("Content-Type", "application/json");
+
+            String response = HttpUtil.createPost(SERPER_API_URL)
+                    .addHeaders(headers)
+                    .body(requestBody.toString())
+                    .timeout(SERPER_TIMEOUT_MS)
+                    .execute()
+                    .body();
+
+            // 解析 Serper 返回的 organic 结果
             JSONObject jsonObject = JSONUtil.parseObj(response);
-            JSONArray organicResults = jsonObject.getJSONArray("organic_results");
+            JSONArray organicResults = jsonObject.getJSONArray("organic");
             if (organicResults == null || organicResults.isEmpty()) {
                 return "未搜索到相关结果";
             }
@@ -92,7 +110,7 @@ public class WebSearchTool {
             }
             return sb.toString().trim();
         } catch (Exception e) {
-            return "Error searching Baidu: " + e.getMessage();
+            return "Error searching Google: " + e.getMessage();
         }
     }
 

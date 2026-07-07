@@ -71,7 +71,7 @@ public class KnowledgeBaseService {
         if (fileContent.isBlank()) {
             throw new IllegalArgumentException("file content is empty");
         }
-        log.info("file read: {}, {} chars, userId={}", originalFilename, fileContent.length(), userId);
+        log.debug("file read: {}, {} chars, userId={}", originalFilename, fileContent.length(), userId);
 
         // 覆盖更新：同名文件先删除旧分块
         deleteBySource(originalFilename, userId);
@@ -232,7 +232,7 @@ public class KnowledgeBaseService {
                 .query(query)
                 .topK(SEARCH_TEST_TOP_K);
         // 多租户隔离：只检索当前用户的文档
-        StringBuilder filter = new StringBuilder("userId == '" + userId + "'");
+        StringBuilder filter = new StringBuilder("userId == '" + userId.replace("'", "''") + "'");
         if (sourceName != null && !sourceName.isBlank()) {
             filter.append(" AND source == '").append(sourceName.replace("'", "''")).append("'");
         }
@@ -249,7 +249,7 @@ public class KnowledgeBaseService {
             item.put("snippet", text.length() > 200 ? text.substring(0, 200) + "..." : text);
             results.add(item);
         }
-        log.info("searchTest: query='{}', source='{}', userId={}, hits={}", query, sourceName, userId, results.size());
+        log.debug("searchTest: query='{}', source='{}', userId={}, hits={}", query, sourceName, userId, results.size());
         return results;
     }
 

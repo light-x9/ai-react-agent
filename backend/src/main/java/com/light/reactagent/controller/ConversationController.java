@@ -103,6 +103,10 @@ public class ConversationController {
     @PostMapping("/{id}/messages")
     public Map<String, Object> saveMessage(@PathVariable Long id, @RequestBody SaveMessageRequest req) {
         String userId = currentUserId();
+        // 消息内容长度限制：防止超大消息做存储 DoS
+        if (req.content() != null && req.content().length() > 50_000) {
+            return Map.of("success", false, "message", "消息内容过长（最大 50000 字符）");
+        }
         Conversation c = conversationRepository.findById(id).orElse(null);
         if (c == null || !userId.equals(c.getUserId())) {
             return Map.of("success", false, "message", "会话不存在或无权限");

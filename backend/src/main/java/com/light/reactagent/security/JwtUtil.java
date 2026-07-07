@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -16,6 +17,7 @@ import java.util.Date;
  * <p>
  * 使用 HS256，密钥从 jwt.secret 注入（生产环境用环境变量 JWT_SECRET 覆盖）。
  */
+@Slf4j
 @Component
 public class JwtUtil {
 
@@ -26,6 +28,11 @@ public class JwtUtil {
                    @Value("${jwt.expiration:86400000}") long expiration) {
         this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
         this.expiration = expiration;
+        // 弱密钥检测：如果 secret 过短或看起来像默认值，打印警告
+        if (secret.length() < 32 || secret.contains("dev") || secret.contains("change")) {
+            log.warn("[JWT-WARN] 当前使用的是弱 JWT 密钥，严禁用于生产环境！");
+            log.warn("[JWT-WARN] 请设置环境变量 JWT_SECRET（至少 32 字节随机字符串，生成方式：openssl rand -base64 48）");
+        }
     }
 
     /**

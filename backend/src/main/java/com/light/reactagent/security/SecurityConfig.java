@@ -1,6 +1,7 @@
 package com.light.reactagent.security;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -18,6 +19,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 
 /**
  * Spring Security 配置
@@ -31,6 +33,15 @@ import java.util.Collections;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final AuthRateLimitFilter authRateLimitFilter;
+
+    /**
+     * 允许的跨域来源域名（逗号分隔）
+     * 生产环境应设为具体前端域名，如 "https://yourdomain.com,https://www.yourdomain.com"
+     * 本地开发用 "*" 通配
+     */
+    @Value("${cors.allowed-origins:*}")
+    private String allowedOrigins;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -51,6 +62,7 @@ public class SecurityConfig {
                 ).permitAll()
                 .anyRequest().authenticated()
             )
+            .addFilterBefore(authRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
@@ -72,7 +84,16 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        config.setAllowedOriginPatterns(Collections.singletonList("*"));
+        // 根据配置解析来源域名："*" 表示允许所有（本地开发），或具体域名列表（生产）
+        List<String> origins = Arrays.stream(allowedOrigins.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+        if (origins.contains("*")) {
+            config.setAllowedOriginPatterns(Collections.singletonList("*"));
+        } else {
+            config.setAllowedOriginPatterns(origins);
+        }
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept"));
         config.setExposedHeaders(Collections.singletonList("Content-Disposition"));

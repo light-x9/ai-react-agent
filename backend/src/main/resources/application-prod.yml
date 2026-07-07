@@ -1,2 +1,70 @@
-# 鍙互缂栧啓鐢熶骇鐜鐨勯厤缃紝浼氳鐩?application.yml 閰嶇疆
-# 娉ㄦ剰鎻愪氦鏃朵笉瑕佸寘鍚晱鎰熶俊鎭紙鎴栬€呬笉瑕佹彁浜よ鏂囦欢锛
+# 生产环境配置 —— 使用方式：spring.profiles.active=prod
+# ⚠️ 以下所有密钥必须通过环境变量注入，切勿硬编码
+# 启动前请确保已设置：DASHSCOPE_API_KEY、SEARCH_API_KEY、AMAP_API_KEY、PEXELS_API_KEY、JWT_SECRET、PG_PASSWORD
+
+spring:
+  # ---- 数据库（生产环境使用独立实例） ----
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/react_agent}
+    username: ${DB_USERNAME:postgres}
+    password: ${PG_PASSWORD:}
+    driver-class-name: org.postgresql.Driver
+  ai:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY:}
+    vectorstore:
+      pgvector:
+        index-type: HNSW
+        dimensions: 1536
+        distance-type: COSINE_DISTANCE
+        max-document-batch-size: 10000
+        # 生产环境禁止自动建表
+        initialize-schema: false
+    mcp:
+      client:
+        stdio:
+          servers-configuration: classpath:mcp-servers.json
+
+# ---- 外部 API 密钥 ----
+serper:
+  api-key: ${SERPER_API_KEY:}
+amap:
+  api-key: ${AMAP_API_KEY:}
+AMAP_MAPS_API_KEY: ${amap.api-key}
+PEXELS_API_KEY: ${PEXELS_API_KEY:}
+
+# ---- CORS：生产环境必须设为前端域名 ----
+cors:
+  allowed-origins: ${CORS_ORIGINS:https://yourdomain.com}
+
+# ---- LightManus 配置 ----
+lightmanus:
+  tool:
+    terminal:
+      # 生产环境严禁开启终端工具
+      enabled: false
+  quota:
+    daily-chat: 100
+    daily-web-search: 30
+
+# ---- JWT（生产环境必须通过环境变量设置强密钥） ----
+jwt:
+  secret: ${JWT_SECRET:}
+  expiration: 86400000
+
+# ---- 日志：生产环境用 INFO，不再打印 LLM 请求细节 ----
+logging:
+  level:
+    root: INFO
+    com.light.reactagent: INFO
+    org.springframework.ai: WARN
+    org.springframework.web: WARN
+
+# ---- SpringDoc/Knife4j：生产环境关闭 API 文档 ----
+springdoc:
+  swagger-ui:
+    enabled: false
+  api-docs:
+    enabled: false
+knife4j:
+  enable: false
