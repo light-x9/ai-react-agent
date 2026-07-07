@@ -220,7 +220,7 @@ const capabilities = [
 ]
 
 const activeCaps = reactive({
-  webSearch: false,
+  webSearch: true,
   knowledgeBase: false
 })
 
