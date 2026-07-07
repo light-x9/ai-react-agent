@@ -2,6 +2,8 @@ package com.light.reactagent.tools;
 
 import cn.hutool.core.io.FileUtil;
 import com.light.reactagent.constant.FileConstant;
+import com.light.reactagent.tools.file.FileContextHolder;
+import com.light.reactagent.tools.file.FileMetadataManager;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -16,10 +18,20 @@ import java.nio.file.Path;
  */
 public class FileOperationTool {
 
+    private final FileMetadataManager fileMetadataManager;
+
     /**
      * 文件读写基准目录（沙箱），所有文件操作只能在此目录内进行
      */
     private final File baseDir = new File(FileConstant.FILE_SAVE_DIR + "/file");
+
+    public FileOperationTool() {
+        this.fileMetadataManager = null;
+    }
+
+    public FileOperationTool(FileMetadataManager fileMetadataManager) {
+        this.fileMetadataManager = fileMetadataManager;
+    }
 
     @Tool(description = "Read content from a file. Only files within the workspace sandbox directory are accessible.")
     public String readFile(@ToolParam(description = "Name of a file to read") String fileName) {
@@ -49,7 +61,24 @@ public class FileOperationTool {
             FileUtil.mkdir(baseDir);
             FileUtil.writeUtf8String(content, target);
             // 出于安全考虑，不向调用方（LLM）暴露服务器绝对路径
-            return "文件写入成功：" + target.getName();
+            String result = "文件写入成功：" + target.getName();
+
+            // 注册文件元数据，使前端可通过 fileId 下载该文件
+            if (fileMetadataManager != null) {
+                String chatId = FileContextHolder.getChatId();
+                if (chatId != null && target.exists()) {
+                    String fileId = fileMetadataManager.registerFile(
+                            chatId,
+                            target.getName(),
+                            resolveContentType(fileName),
+                            resolveContentType(fileName),
+                            target.length()
+                    );
+                    result += " [fileId=" + fileId + "]";
+                    FileContextHolder.recordFileId(fileId);
+                }
+            }
+            return result;
         } catch (Exception e) {
             return "写入文件出错：" + e.getMessage();
         }
@@ -74,5 +103,22 @@ public class FileOperationTool {
             return null;
         }
         return targetPath.toFile();
+    }
+
+    /**
+     * 根据文件扩展名推断 MIME 类型
+     */
+    private String resolveContentType(String fileName) {
+        if (fileName == null) return "application/octet-stream";
+        String lower = fileName.toLowerCase();
+        if (lower.endsWith(".txt")) return "text/plain";
+        if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "text/markdown";
+        if (lower.endsWith(".json")) return "application/json";
+        if (lower.endsWith(".html") || lower.endsWith(".htm")) return "text/html";
+        if (lower.endsWith(".csv")) return "text/csv";
+        if (lower.endsWith(".xml")) return "application/xml";
+        if (lower.endsWith(".yaml") || lower.endsWith(".yml")) return "text/yaml";
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        return "application/octet-stream";
     }
 }

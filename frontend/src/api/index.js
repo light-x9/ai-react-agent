@@ -204,6 +204,55 @@ export const renameConversation = async (id, title) => {
   return res.data
 }
 
+// ============ 文件下载接口 ============
+
+/**
+ * 下载 AI 生成的文件
+ * 通过 fetch 获取文件流，触发浏览器下载
+ *
+ * @param {string} fileId - 文件 ID
+ * @param {string} chatId - 会话 ID（归属校验）
+ * @returns {Promise<{success: boolean, blob?: Blob, fileName?: string, error?: string}>}
+ */
+export const downloadFile = async (fileId, chatId) => {
+  const params = new URLSearchParams({ fileId, chatId })
+  const url = API_BASE_URL + '/files/download?' + params.toString()
+
+  const headers = {}
+  const token = getToken()
+  if (token) {
+    headers['Authorization'] = 'Bearer ' + token
+  }
+
+  const response = await fetch(url, { headers })
+  if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('username')
+      localStorage.removeItem('react-agent-chat')
+      window.location.href = '/login'
+      return { success: false, error: '登录已过期' }
+    }
+    return { success: false, error: '下载失败（HTTP ' + response.status + '）' }
+  }
+
+  // 从 Content-Disposition 提取文件名
+  const disposition = response.headers.get('Content-Disposition')
+  let fileName = 'download'
+  if (disposition) {
+    const match = disposition.match(/filename\*=UTF-8''(.+?)(?:;|$)/i)
+    if (match) {
+      fileName = decodeURIComponent(match[1])
+    } else {
+      const match2 = disposition.match(/filename="?([^"]+)"?/i)
+      if (match2) fileName = match2[1]
+    }
+  }
+
+  const blob = await response.blob()
+  return { success: true, blob, fileName }
+}
+
 // ============ 用量额度接口 ============
 export const getUsageToday = async () => {
   const res = await request.get('/usage/today')
@@ -218,6 +267,7 @@ export default {
   batchDeleteKnowledgeFiles,
   previewKnowledgeFile,
   searchTestKnowledge,
+  downloadFile,
   login,
   register,
   createConversation,

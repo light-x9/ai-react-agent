@@ -70,6 +70,8 @@ public class AiAgentController {
             ToolCallback[] tools = toolRegistration.buildToolSet(request.webSearch(), request.knowledgeBase());
             LightManus lightManus = new LightManus(tools, dashscopeChatModel,
                     request.webSearch(), request.knowledgeBase());
+            // 注入 chatId 到 Agent，用于文件归属隔离（前端每次会话生成一个 UUID 作为 chatId）
+            lightManus.setChatId(request.chatId());
             lightManus.setOnAgentComplete(releaseOnce);
 
             String message = request.message();
@@ -138,8 +140,10 @@ public class AiAgentController {
      * @param history       历史上下文（可选）
      * @param webSearch     是否开启网页搜索
      * @param knowledgeBase 是否开启知识库
+     * @param chatId        会话 ID（可选，前端生成的 UUID，用于文件归属隔离；为空时文件工具仍可生成文件但不做归属校验）
      */
     public record ChatRequest(String message, String history,
-                              boolean webSearch, boolean knowledgeBase) {
+                              boolean webSearch, boolean knowledgeBase,
+                              String chatId) {
     }
 }

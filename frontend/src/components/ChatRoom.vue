@@ -45,6 +45,52 @@
                 </div>
               </div>
               <div class="message-time">{{ formatTime(msg.time) }}</div>
+              <!-- 文件下载卡片：AI 生成文件后展示 -->
+              <transition-group v-if="msg.files && msg.files.length > 0" name="file-card" tag="div" class="file-cards">
+                <div v-for="file in msg.files" :key="file.fileId" class="file-card">
+                  <div class="file-card-icon" :class="'file-type-' + (file.type || 'default')">
+                    <svg v-if="file.type === 'pdf'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <path d="M9 15l2 2 4-4"/>
+                    </svg>
+                    <svg v-else-if="file.type === 'md' || file.type === 'markdown' || file.type === 'txt'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <line x1="16" y1="13" x2="8" y2="13"/>
+                      <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                    <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
+                      <polyline points="13 2 13 9 20 9"/>
+                    </svg>
+                  </div>
+                  <div class="file-card-info">
+                    <div class="file-card-name" :title="file.name">{{ file.name }}</div>
+                    <div class="file-card-size">{{ formatFileSize(file.size) }}</div>
+                  </div>
+                  <button
+                    class="file-card-btn"
+                    :disabled="downloadingFileId === file.fileId"
+                    @click="downloadFile(file, msg.time)"
+                    :title="'下载 ' + file.name"
+                  >
+                    <span v-if="downloadingFileId === file.fileId" class="file-btn-spinner"></span>
+                    <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                  </button>
+                </div>
+              </transition-group>
+              <!-- 下载错误提示 -->
+              <transition name="fade">
+                <div v-if="downloadError && downloadError.messageId === msg.time" class="file-download-error">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                  {{ downloadError.text }}
+                </div>
+              </transition>
             </div>
           </div>
 
@@ -64,6 +110,15 @@
 
     <!-- 输入区域 -->
     <div class="chat-input-container">
+      <!-- 配额达上限提示横幅 -->
+      <transition name="fade">
+        <div v-if="quotaReached" class="quota-banner">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span>今日对话已达上限，请明日再试</span>
+        </div>
+      </transition>
       <!-- 能力开关条（toggle，持续生效） -->
       <div class="quick-cap-bar">
         <button
@@ -90,14 +145,14 @@
           @input="autoResize"
           :placeholder="inputPlaceholder"
           class="input-box"
-          :disabled="connectionStatus === 'connecting'"
+          :disabled="connectionStatus === 'connecting' || quotaReached"
           rows="1"
         ></textarea>
         <button
           @click="sendMessage"
           class="send-button"
           :class="{ active: inputMessage.trim() }"
-          :disabled="connectionStatus === 'connecting' || !inputMessage.trim()"
+          :disabled="connectionStatus === 'connecting' || !inputMessage.trim() || quotaReached"
           aria-label="发送消息"
         >
           <svg v-if="connectionStatus !== 'connecting'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -115,6 +170,7 @@
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import AiAvatarFallback from './AiAvatarFallback.vue'
 import ReActSteps from './ReActSteps.vue'
+import { downloadFile as downloadFileApi } from '@/api'
 
 const props = defineProps({
   messages: {
@@ -128,6 +184,14 @@ const props = defineProps({
   aiType: {
     type: String,
     default: 'default'
+  },
+  chatId: {
+    type: String,
+    default: ''
+  },
+  quotaReached: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -207,6 +271,7 @@ onMounted(() => {
 const hasUserMessages = computed(() => props.messages.some(m => m.isUser))
 
 const inputPlaceholder = computed(() => {
+  if (props.quotaReached) return '今日对话已达上限，请明日再试'
   if (props.connectionStatus === 'connecting') return 'AI 正在思考中...'
   return '输入消息，Enter 发送，Shift+Enter 换行'
 })
@@ -249,6 +314,63 @@ const sendMessage = () => {
 const formatTime = (timestamp) => {
   const date = new Date(timestamp)
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+// ---------- 文件下载 ----------
+const downloadingFileId = ref(null)    // 当前正在下载的 fileId（loading 状态）
+const downloadError = ref(null)        // 下载错误信息 { messageId, text }
+
+/**
+ * 格式化文件大小为人类可读字符串
+ */
+const formatFileSize = (bytes) => {
+  if (!bytes && bytes !== 0) return ''
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+/**
+ * 下载 AI 生成的文件
+ * @param {Object} file - 文件信息 { fileId, name, size, type }
+ * @param {number} messageId - 消息的时间戳（用于定位错误提示到具体消息）
+ */
+const downloadFile = async (file, messageId) => {
+  if (!file || !file.fileId) return
+  downloadingFileId.value = file.fileId
+  downloadError.value = null
+  try {
+    const result = await downloadFileApi(file.fileId, props.chatId)
+    if (!result.success) {
+      showDownloadError(messageId, result.error || '下载失败')
+      return
+    }
+    // 触发浏览器下载
+    const url = URL.createObjectURL(result.blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = result.fileName || file.name
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    showDownloadError(messageId, '下载出错：' + (err.message || '未知错误'))
+  } finally {
+    downloadingFileId.value = null
+  }
+}
+
+/**
+ * 显示下载错误提示（3 秒后自动消失）
+ */
+const showDownloadError = (messageId, text) => {
+  downloadError.value = { messageId, text }
+  setTimeout(() => {
+    if (downloadError.value && downloadError.value.messageId === messageId) {
+      downloadError.value = null
+    }
+  }, 3000)
 }
 
 const scrollToBottom = async () => {
@@ -704,6 +826,130 @@ onMounted(() => {
   to { transform: rotate(360deg); }
 }
 
+/* ---------- 文件下载卡片 ---------- */
+.file-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.file-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.file-card:hover {
+  border-color: var(--border-active);
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.06);
+}
+
+.file-card-icon {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  flex-shrink: 0;
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.file-card-icon.file-type-pdf {
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
+}
+
+.file-card-icon.file-type-md,
+.file-card-icon.file-type-markdown,
+.file-card-icon.file-type-txt {
+  background: rgba(16, 185, 129, 0.08);
+  color: #059669;
+}
+
+.file-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-card-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-card-size {
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+  margin-top: 1px;
+}
+
+.file-card-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: white;
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
+  flex-shrink: 0;
+}
+
+.file-card-btn:hover:not(:disabled) {
+  background: var(--accent-bg);
+  transform: scale(1.05);
+}
+
+.file-card-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.file-btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(79, 70, 229, 0.2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.file-download-error {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #dc2626;
+  font-size: 0.75rem;
+}
+
+/* 文件卡片入场动画 */
+.file-card-enter-active {
+  transition: opacity 0.3s, transform 0.3s;
+}
+.file-card-enter-from {
+  opacity: 0;
+  transform: translateY(8px);
+}
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 768px) {
   .message { max-width: 95%; }
@@ -721,5 +967,20 @@ onMounted(() => {
   .welcome-panel { padding: 20px 12px 16px; }
   .welcome-title { font-size: 1.25rem; }
   .feature-card { padding: 16px 14px; }
+}
+
+/* ---------- 配额达上限横幅 ---------- */
+.quota-banner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  margin: 8px 16px 0;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #dc2626;
+  font-size: 0.8125rem;
+  font-weight: 500;
 }
 </style>

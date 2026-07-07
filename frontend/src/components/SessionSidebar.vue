@@ -90,13 +90,13 @@
         <div class="usage-box">
           <div class="usage-row">
             <span class="usage-label">今日对话</span>
-            <span class="usage-value" :class="{ near: usage.chatUsed >= usage.chatLimit * 0.8 }">
+            <span class="usage-value" :class="{ near: usage.chatUsed >= usage.chatLimit * 0.8 && usage.chatUsed < usage.chatLimit, full: usage.chatUsed >= usage.chatLimit }">
               {{ usage.chatUsed }}/{{ usage.chatLimit }}
             </span>
           </div>
           <div class="usage-row">
             <span class="usage-label">联网搜索</span>
-            <span class="usage-value" :class="{ near: usage.searchUsed >= usage.searchLimit * 0.8 }">
+            <span class="usage-value" :class="{ near: usage.searchUsed >= usage.searchLimit * 0.8 && usage.searchUsed < usage.searchLimit, full: usage.searchUsed >= usage.searchLimit }">
               {{ usage.searchUsed }}/{{ usage.searchLimit }}
             </span>
           </div>
@@ -493,6 +493,10 @@ defineExpose({ refreshUsage })
 }
 .usage-value.near {
   color: #d97706;
+}
+.usage-value.full {
+  color: #dc2626;
+  font-weight: 700;
 }
 
 .user-box {

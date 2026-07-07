@@ -2,6 +2,7 @@ package com.light.reactagent.agent;
 
 import cn.hutool.core.util.StrUtil;
 import com.light.reactagent.agent.model.AgentState;
+import com.light.reactagent.tools.file.FileContextHolder;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -14,6 +15,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -54,6 +56,12 @@ public abstract class BaseAgent {
      * 由外部（如 Controller）注入，在 runStream 的 finally 中调用。
      */
     private Runnable onAgentComplete;
+
+    /**
+     * 停止标志：onTimeout / onCompletion 回调设置此标志，异步线程的 step 循环每轮检查，
+     * 及时退出循环，避免心跳泄漏和线程空转。
+     */
+    private volatile boolean stopped;
 
     /**
      * 运行代理
@@ -134,6 +142,11 @@ public abstract class BaseAgent {
         CompletableFuture.runAsync(() -> {
             // 传播 SecurityContext 到异步线程，使 RagSearchTool 等工具能取到当前用户
             SecurityContextHolder.setContext(securityContext);
+            // 注入工具上下文（如 chatId）到 FileContextHolder，供文件工具做归属隔离
+            Map<String, Object> toolContext = buildToolContext();
+            if (toolContext != null) {
+                FileContextHolder.setAll(toolContext);
+            }
             // 1、基础校验
             try {
                 if (this.state != AgentState.IDLE) {
@@ -156,8 +169,8 @@ public abstract class BaseAgent {
             // 保存结果列表
             List<String> results = new ArrayList<>();
             try {
-                // 执行循环
-                for (int i = 0; i < maxSteps && state != AgentState.FINISHED; i++) {
+                // 执行循环（每轮检查 stopped 标志，onTimeout 可中断循环）
+                for (int i = 0; i < maxSteps && state != AgentState.FINISHED && !stopped; i++) {
                     int stepNumber = i + 1;
                     currentStep = stepNumber;
                     log.info("Executing step {}/{}", stepNumber, maxSteps);
@@ -167,6 +180,11 @@ public abstract class BaseAgent {
                 results.add(result);
                 // 输出当前每一步的结果到 SSE（不带 Step N 前缀，前端直接展示）
                 sseEmitter.send(stepResult);
+                }
+                // 如果因 stopped 退出循环，标记状态
+                if (stopped) {
+                    state = AgentState.ERROR;
+                    log.warn("Agent 被 onTimeout 中断，提前退出 step 循环");
                 }
                 // 检查是否超出步骤限制
                 if (currentStep >= maxSteps) {
@@ -194,6 +212,7 @@ public abstract class BaseAgent {
                 // 3、清理资源
                 heartbeat.shutdownNow();
                 SecurityContextHolder.clearContext();
+                FileContextHolder.clear();
                 this.cleanup();
                 // 释放并发许可等外部资源
                 if (onAgentComplete != null) {
@@ -205,18 +224,23 @@ public abstract class BaseAgent {
             }
         });
 
-        // 设置超时回调
+        // 设置超时回调：设置 stopped 标志让异步线程的 step 循环及时退出
         sseEmitter.onTimeout(() -> {
+            this.stopped = true;
             heartbeat.shutdownNow();
             this.state = AgentState.ERROR;
+            // 清理 ThreadLocal，防止线程复用时泄漏
+            FileContextHolder.clear();
             this.cleanup();
             if (onAgentComplete != null) {
                 try { onAgentComplete.run(); } catch (Exception ignored) {}
             }
             log.warn("SSE connection timeout");
         });
-        // 设置完成回调
+        // 设置完成回调：设置 stopped 标志，防止异步线程还在跑（正常完成时 finally 会跑得比这个快，但加一层保险）
         sseEmitter.onCompletion(() -> {
+            this.stopped = true;
+            heartbeat.shutdownNow();
             if (this.state == AgentState.RUNNING) {
                 this.state = AgentState.FINISHED;
             }
@@ -232,6 +256,18 @@ public abstract class BaseAgent {
      * @return
      */
     public abstract String step();
+
+    /**
+     * 构建工具上下文（子类可重写）
+     * <p>
+     * 返回的 Map 会被设置到 FileContextHolder，供工具方法在执行期间获取上下文信息（如 chatId）。
+     * 默认返回 null（不设置任何上下文）。
+     *
+     * @return 工具上下文 Map，或 null
+     */
+    protected Map<String, Object> buildToolContext() {
+        return null;
+    }
 
     /**
      * 清理资源

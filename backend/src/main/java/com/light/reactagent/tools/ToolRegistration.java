@@ -1,5 +1,6 @@
 package com.light.reactagent.tools;
 
+import com.light.reactagent.tools.file.FileMetadataManager;
 import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.ToolCallbackProvider;
@@ -28,26 +29,32 @@ public class ToolRegistration {
     private final ObjectProvider<ToolCallbackProvider> toolCallbackProvider;
     private final RagSearchTool ragSearchTool;
     private final WebSearchTool webSearchTool;
+    private final FileMetadataManager fileMetadataManager;
 
     public ToolRegistration(ObjectProvider<ToolCallbackProvider> toolCallbackProvider,
                             RagSearchTool ragSearchTool,
-                            WebSearchTool webSearchTool) {
+                            WebSearchTool webSearchTool,
+                            FileMetadataManager fileMetadataManager) {
         this.toolCallbackProvider = toolCallbackProvider;
         this.ragSearchTool = ragSearchTool;
         this.webSearchTool = webSearchTool;
+        this.fileMetadataManager = fileMetadataManager;
     }
 
     /**
      * 按能力开关动态装配工具子集，并拼接 MCP 工具（高德地图 + 图片搜索）
-     * - 常驻 TerminateTool（控制 ReAct 流程终止）
+     * - 常驻：TerminateTool + 文件操作工具 + PDF 生成工具 + 资源下载工具
      * - 开网页搜索：WebSearchTool + WebScrapingTool
      * - 开知识库：RagSearchTool
-     * - MCP 工具（高德地图、图片搜索）启动时全量注入
-     * - 纯对话（都不开）：仅 TerminateTool + MCP 工具
+     * - MCP 工具启动时全量注入
      */
     public ToolCallback[] buildToolSet(boolean webSearch, boolean knowledgeBase) {
         List<Object> tools = new ArrayList<>();
         tools.add(new TerminateTool());
+        // 文件工具常驻：AI 生成文件/PDF 是核心能力，不依赖能力开关
+        tools.add(new FileOperationTool(fileMetadataManager));
+        tools.add(new PDFGenerationTool(fileMetadataManager));
+        tools.add(new ResourceDownloadTool(fileMetadataManager));
         if (webSearch) {
             tools.add(webSearchTool);
             tools.add(new WebScrapingTool());
@@ -65,11 +72,11 @@ public class ToolRegistration {
      */
     @Bean
     public ToolCallback[] allTools() {
-        FileOperationTool fileOperationTool = new FileOperationTool();
+        FileOperationTool fileOperationTool = new FileOperationTool(fileMetadataManager);
         WebScrapingTool webScrapingTool = new WebScrapingTool();
-        ResourceDownloadTool resourceDownloadTool = new ResourceDownloadTool();
+        ResourceDownloadTool resourceDownloadTool = new ResourceDownloadTool(fileMetadataManager);
         TerminalOperationTool terminalOperationTool = new TerminalOperationTool(terminalEnabled);
-        PDFGenerationTool pdfGenerationTool = new PDFGenerationTool();
+        PDFGenerationTool pdfGenerationTool = new PDFGenerationTool(fileMetadataManager);
         TerminateTool terminateTool = new TerminateTool();
         return ToolCallbacks.from(
                 fileOperationTool,

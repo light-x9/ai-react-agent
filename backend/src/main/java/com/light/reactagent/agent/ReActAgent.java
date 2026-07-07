@@ -1,6 +1,10 @@
 package com.light.reactagent.agent;
 
 import com.light.reactagent.agent.model.AgentState;
+import com.light.reactagent.config.SpringBeanUtils;
+import com.light.reactagent.tools.file.FileContextHolder;
+import com.light.reactagent.tools.file.FileMetadata;
+import com.light.reactagent.tools.file.FileMetadataManager;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -58,7 +62,10 @@ public abstract class ReActAgent extends BaseAgent {
                 String finalText = extractAssistantText();
                 sb.append("{\"type\":\"final\",\"content\":\"")
                   .append(escapeJson(finalText))
-                  .append("\"}");
+                  .append("\"");
+                // 附带本次请求生成的文件列表（供前端展示下载卡片）
+                appendGeneratedFilesJson(sb);
+                sb.append("}");
                 return sb.toString();
             }
 
@@ -126,6 +133,52 @@ public abstract class ReActAgent extends BaseAgent {
             }
         }
         return "对话结束";
+    }
+
+    /**
+     * 将本次请求生成的文件列表以 JSON 数组形式追加到 StringBuilder
+     * <p>
+     * 输出格式：,"files":[{"fileId":"xxx","name":"report.pdf","size":12345,"type":"pdf"},...]
+     * 无文件时不追加任何内容。
+     */
+    private void appendGeneratedFilesJson(StringBuilder sb) {
+        List<String> fileIds = FileContextHolder.getGeneratedFileIds();
+        if (fileIds.isEmpty()) {
+            return;
+        }
+        // 通过 FileMetadataManager 获取元数据（需要从 Spring 上下文获取）
+        FileMetadataManager metadataManager = getMetadataManager();
+        if (metadataManager == null) {
+            return;
+        }
+        String chatId = FileContextHolder.getChatId();
+        sb.append(",\"files\":[");
+        boolean first = true;
+        for (String fileId : fileIds) {
+            FileMetadata meta = metadataManager.getFile(chatId, fileId);
+            if (meta == null) {
+                continue;
+            }
+            if (!first) {
+                sb.append(",");
+            }
+            first = false;
+            sb.append("{\"fileId\":\"").append(meta.getFileId()).append("\"")
+              .append(",\"name\":\"").append(escapeJson(meta.getOriginalName())).append("\"")
+              .append(",\"size\":").append(meta.getSizeBytes())
+              .append(",\"type\":\"").append(escapeJson(meta.getExtension())).append("\"")
+              .append("}");
+        }
+        sb.append("]");
+    }
+
+    /**
+     * 从 Spring 应用上下文获取 FileMetadataManager Bean
+     * <p>
+     * 由于 ReActAgent 不是 Spring Bean，无法 @Autowired，通过静态工具类间接获取。
+     */
+    private FileMetadataManager getMetadataManager() {
+        return SpringBeanUtils.getBean(FileMetadataManager.class);
     }
 
     /**

@@ -36,6 +36,11 @@
       </div>
     </transition>
 
+    <!-- Quota toast -->
+    <transition name="fade">
+      <div v-if="quotaToast" class="quota-toast">{{ quotaToast }}</div>
+    </transition>
+
     <!-- ====== Manage Dialog ====== -->
     <transition name="modal">
       <div v-if="showManage" class="modal-overlay" @click.self="closeManageDialog">
@@ -225,6 +230,8 @@
           :messages="chatStore.activeMessages"
           :connection-status="connectionStatus"
           ai-type="super"
+          :chat-id="chatId"
+          :quota-reached="quotaReached"
           @send-message="sendMessage"
           @capability-change="onCapabilityChange"
         />
@@ -246,7 +253,7 @@ import { useChatStore } from '@/stores/chatStore'
 import ChatRoom from '../components/ChatRoom.vue'
 import AppFooter from '../components/AppFooter.vue'
 import SessionSidebar from '../components/SessionSidebar.vue'
-import { chatWithManus, uploadKnowledgeBase, listKnowledgeFiles, deleteKnowledgeFile, batchDeleteKnowledgeFiles, previewKnowledgeFile, searchTestKnowledge } from '../api'
+import { chatWithManus, uploadKnowledgeBase, listKnowledgeFiles, deleteKnowledgeFile, batchDeleteKnowledgeFiles, previewKnowledgeFile, searchTestKnowledge, getUsageToday } from '../api'
 import { connectSSE } from '../api'
 import { useUserStore } from '@/stores/userStore'
 const USE_MOCK = false  // true=Mock演示, false=真实后端
@@ -330,6 +337,26 @@ const classifyMessage = (msg) => {
 // 能力提示横幅（query 消息且未开启任何能力时显示）
 const showCapHint = ref(false)
 let capHintTimer = null
+
+// ========== 配额状态 ==========
+const quotaReached = ref(false)
+const quotaToast = ref('')
+let quotaToastTimer = null
+
+const checkQuota = async () => {
+  try {
+    const res = await getUsageToday()
+    if (res) {
+      quotaReached.value = res.chatUsed >= res.chatLimit
+    }
+  } catch (_) {}
+}
+
+const showQuotaToast = (msg) => {
+  quotaToast.value = msg
+  if (quotaToastTimer) clearTimeout(quotaToastTimer)
+  quotaToastTimer = setTimeout(() => { quotaToast.value = '' }, 4000)
+}
 
 // ========== Upload ==========
 const fileInput = ref(null)
@@ -701,6 +728,10 @@ const sendMessage = async (message) => {
         switch (event.type) {
           case 'final':
             msg.content = event.content || ''
+            // 附带的文件列表（后端文件工具生成后通过 final 事件返回）
+            if (event.files && event.files.length > 0) {
+              msg.files = event.files
+            }
             break
           case 'error':
             msg.content = '错误：' + (event.content || '未知错误')
@@ -721,6 +752,7 @@ const sendMessage = async (message) => {
             await chatStore.persistMessage('assistant', content, lockedSessionId)
           }
           if (sidebarRef.value) await sidebarRef.value.refreshUsage()
+          await checkQuota()
           return
         }
         // 尝试解析为结构化 JSON 事件
@@ -735,6 +767,12 @@ const sendMessage = async (message) => {
         }
         // 纯文本降级：直接追加
         chatStore.activeMessages[aiMessageIndex].content += data
+
+        // 检测配额拒绝消息 → 显示 toast + 锁定输入
+        if (data.includes('今日对话已达上限') || data.includes('今日联网搜索已达上限')) {
+          quotaReached.value = true
+          showQuotaToast(data)
+        }
       },
       // 异常断开：尝试保存已收到的内容
       async () => {
@@ -1064,7 +1102,8 @@ const logout = () => {
 onMounted(async () => {
   // 初始化：从后端加载会话列表与历史消息（无会话则新建）
   await chatStore.init()
-  // 空会话时不塞欢迎语——ChatRoom 的空状态引导页（功能卡片）自然展示
+  // 检查当日配额状态（若已达上限则锁输入框）
+  await checkQuota()
 })
 
 onBeforeUnmount(() => {
@@ -1794,5 +1833,22 @@ onBeforeUnmount(() => {
   .header { padding: 10px 12px; }
   .title { font-size: 0.875rem; }
   .chat-area { padding: 8px; min-height: calc(100vh - 42px - 150px); margin-bottom: 8px; }
+}
+
+/* === Quota Toast === */
+.quota-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  padding: 10px 20px;
+  border-radius: 8px;
+  background: #dc2626;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.3);
+  white-space: nowrap;
 }
 </style>
