@@ -666,9 +666,9 @@ const sendMessage = async (message) => {
 
   if (eventSource) eventSource.close()
 
-  // 创建 AI 消息骨架
+  // 创建 AI 消息骨架（初始显示「思考中…」，final 事件到达后替换为实际回答）
   const aiMessageIndex = chatStore.activeMessages.length
-  chatStore.addMessageToActive('', false, '', {
+  chatStore.addMessageToActive('思考中…', false, '', {
     reactCycles: [],
     finalAnswer: '',
     _cycleIndex: 0
@@ -690,23 +690,53 @@ const sendMessage = async (message) => {
       // 锁定当前会话 ID，避免 SSE 持续期间 activeId 被切换导致 AI 回复存错会话
       const lockedSessionId = chatStore.activeId
 
+      /**
+       * 处理后端发来的结构化 SSE 事件（主流简洁风格：不展示推演步骤，只展示最终回答）
+       * 后端仍发送 thought/action/observation 事件供内部使用（如日志、未来扩展），
+       * 但前端仅消费 final 事件，保持对话界面干净。
+       */
+      const handleStructuredEvent = (event) => {
+        const msg = chatStore.activeMessages[aiMessageIndex]
+        if (!msg) return
+        switch (event.type) {
+          case 'final':
+            msg.content = event.content || ''
+            break
+          case 'error':
+            msg.content = '错误：' + (event.content || '未知错误')
+            break
+          // thought / action / observation 不展示，维持主流流式对话风格
+        }
+      }
+
       eventSource = connectSSE('/ai/manus/chat', { message, history: historyText, webSearch: activeCaps.value.webSearch, knowledgeBase: activeCaps.value.knowledgeBase },
-      // onMessage：后端每条 SST 数据 + 流结束时的 [DONE] 都走这里
+      // onMessage：解析结构化 JSON / 纯文本 / [DONE]
       async (data) => {
         if (data === '[DONE]') {
           connectionStatus.value = 'disconnected'
           if (eventSource) { eventSource.close(); eventSource = null }
+          // 持久化最终回答（结构化模式下 content 存的是 final 文本）
           const content = chatStore.activeMessages[aiMessageIndex]?.content || ''
-          // 使用锁定时的 sessionId 保存，确保 AI 回复不丢失
           if (content) {
             await chatStore.persistMessage('assistant', content, lockedSessionId)
           }
           if (sidebarRef.value) await sidebarRef.value.refreshUsage()
           return
         }
+        // 尝试解析为结构化 JSON 事件
+        if (data.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(data)
+            handleStructuredEvent(parsed)
+            return
+          } catch (_) {
+            // 非 JSON，降级为纯文本
+          }
+        }
+        // 纯文本降级：直接追加
         chatStore.activeMessages[aiMessageIndex].content += data
       },
-      // 异常断开：无论如何尝试保存已收到的 AI 回复
+      // 异常断开：尝试保存已收到的内容
       async () => {
         const content = chatStore.activeMessages[aiMessageIndex]?.content || ''
         if (content) {

@@ -311,8 +311,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 18px;
-  padding: 32px 16px 24px;
+  gap: 20px;
+  padding: 48px 16px 24px;
   animation: fadeUp 0.5s ease-out;
 }
 

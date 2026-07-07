@@ -19,6 +19,7 @@ import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
 
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @EqualsAndHashCode(callSuper = true)
@@ -30,6 +31,10 @@ public class ToolCallAgent extends ReActAgent {
     private ChatResponse toolCallChatResponse;
     private final ToolCallingManager toolCallingManager;
     private final ChatOptions chatOptions;
+
+    // 当前步骤的思考内容与工具调用（供 step() 构建结构化 SSE 输出）
+    private String currentThought;
+    private List<Map<String, String>> currentToolCalls;
 
     public ToolCallAgent(ToolCallback[] availableTools) {
         super();
@@ -60,6 +65,15 @@ public class ToolCallAgent extends ReActAgent {
             String result = assistantMessage.getText();
             log.info(getName() + "的思考：" + result);
             log.info(getName() + "选择了" + toolCallList.size() + " 个工具来使用");
+
+            // 保存当前思考内容和工具调用，供 step() 构建结构化 SSE 输出
+            this.currentThought = result;
+            this.currentToolCalls = toolCallList.stream()
+                    .map(tc -> Map.of(
+                            "name", tc.name(),
+                            "arguments", tc.arguments()
+                    ))
+                    .collect(Collectors.toList());
             String toolCallInfo = toolCallList.stream()
                     .map(toolCall -> String.format("工具名称：%s，参数：%s", toolCall.name(), toolCall.arguments()))
                     .collect(Collectors.joining("\n"));
