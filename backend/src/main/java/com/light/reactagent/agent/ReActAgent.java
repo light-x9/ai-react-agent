@@ -86,6 +86,18 @@ public abstract class ReActAgent extends BaseAgent {
             sb.append("{\"type\":\"observation\",\"summary\":\"")
               .append(escapeJson(actionResult))
               .append("\"}");
+
+            // 4. 如果 act() 触发了 doTerminate（state→FINISHED），补发 final 事件
+            //    否则前端只消费 final 事件，会一直停留在「思考中…」
+            //    （LLM 调用 doTerminate 结束时，其文字回答即为最终答案）
+            if (getState() == AgentState.FINISHED) {
+                String finalText = extractAssistantText();
+                sb.append("\n{\"type\":\"final\",\"content\":\"")
+                  .append(escapeJson(finalText))
+                  .append("\"");
+                appendGeneratedFilesJson(sb);
+                sb.append("}");
+            }
             return sb.toString();
 
         } catch (Exception e) {

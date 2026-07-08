@@ -192,6 +192,11 @@ const props = defineProps({
   quotaReached: {
     type: Boolean,
     default: false
+  },
+  // 父组件传入的能力开关初始值（用于同步重置）
+  initialCaps: {
+    type: Object,
+    default: () => ({ webSearch: true, knowledgeBase: false })
   }
 })
 
@@ -205,8 +210,8 @@ const inputEl = ref(null)
 const capabilities = [
   {
     key: 'webSearch',
-    name: '网页搜索',
-    desc: '实时查询互联网信息',
+    name: '深度思考',
+    desc: '多步推理 + 联网搜索，适合需要实时信息或复杂分析的问题',
     color: '#4f46e5',
     bg: 'rgba(79,70,229,0.08)'
   },
@@ -219,14 +224,18 @@ const capabilities = [
   }
 ]
 
-const activeCaps = reactive({
-  webSearch: true,
-  knowledgeBase: false
-})
+const activeCaps = reactive({ ...props.initialCaps })
+
+// 父组件传入的初始值变化时同步（如新建对话重置能力开关）
+watch(() => props.initialCaps, (val) => {
+  activeCaps.webSearch = val.webSearch
+  activeCaps.knowledgeBase = val.knowledgeBase
+}, { deep: true })
 
 const toggleCap = (key) => {
   activeCaps[key] = !activeCaps[key]
-  emit('capability-change', { ...activeCaps })
+  // userInitiated = true 表示用户主动操作，用于父组件判断是否展示提示
+  emit('capability-change', { ...activeCaps }, true)
 }
 
 /**
@@ -277,11 +286,6 @@ const inputPlaceholder = computed(() => {
 })
 
 const handleSuggestionClick = (question) => {
-  // 自动开启联网搜索，不再弹出"需要开启联网"的提示
-  if (!activeCaps.webSearch) {
-    activeCaps.webSearch = true
-    emit('capability-change', { ...activeCaps })
-  }
   emit('send-message', question)
 }
 

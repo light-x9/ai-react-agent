@@ -214,12 +214,12 @@
       </div>
     </transition>
 
-    <!-- 能力提示横幅：query 消息且未开启任何检索能力时显示 -->
+    <!-- 深度思考关闭提示横幅：用户主动关闭后显示，告知后果 -->
     <transition name="fade">
-      <div v-if="showCapHint" class="cap-hint-banner">
-        <span>💡 检测到查询类问题，开启「网页搜索」或「知识库」可获得更准确信息</span>
-        <button class="cap-hint-btn" @click="activeCaps.webSearch = true; onCapabilityChange({ ...activeCaps }); showCapHint = false">开启网页搜索</button>
-        <button class="cap-hint-close" @click="showCapHint = false" aria-label="关闭">×</button>
+      <div v-if="showDeepThinkOffHint" class="cap-hint-banner">
+        <span>💡 已关闭「深度思考」，AI 将仅凭自身知识快速回答，无法获取最新信息或联网搜索</span>
+        <button class="cap-hint-btn" @click="activeCaps.webSearch = true; onCapabilityChange({ ...activeCaps }, true)">重新开启</button>
+        <button class="cap-hint-close" @click="showDeepThinkOffHint = false" aria-label="关闭">×</button>
       </div>
     </transition>
 
@@ -232,6 +232,7 @@
           ai-type="super"
           :chat-id="chatId"
           :quota-reached="quotaReached"
+          :initial-caps="activeCaps"
           @send-message="sendMessage"
           @capability-change="onCapabilityChange"
         />
@@ -270,8 +271,33 @@ const chatStore = useChatStore()
 const sidebarRef = ref(null)
 const connectionStatus = ref('disconnected')
 // 能力开关状态（由 ChatRoom toggle 上报）
-const activeCaps = ref({ webSearch: false, knowledgeBase: false })
-const onCapabilityChange = (caps) => { activeCaps.value = caps }
+// 「深度思考」默认开启（与 ChatRoom 的 initialCaps 默认值一致），避免状态不同步
+const activeCaps = ref({ webSearch: true, knowledgeBase: false })
+// 用户主动关闭深度思考后，本会话是否已就实时性问题提醒过（避免重复打扰）
+let deepThinkHintShown = false
+// 关闭深度思考时的提示横幅
+const showDeepThinkOffHint = ref(false)
+
+/**
+ * ChatRoom 能力开关变化回调
+ * @param caps 当前能力状态
+ * @param userInitiated 是否用户主动点击（ChatRoom toggle 时传 true）
+ */
+const onCapabilityChange = (caps, userInitiated = false) => {
+  const wasOn = activeCaps.value.webSearch
+  activeCaps.value = caps
+  // 用户主动关闭深度思考 → 显示提示
+  if (userInitiated && wasOn && !caps.webSearch) {
+    showDeepThinkOffHint.value = true
+    deepThinkHintShown = false // 重置：关闭后允许再提醒一次实时问题
+    setTimeout(() => { showDeepThinkOffHint.value = false }, 6000)
+  }
+  // 用户重新开启 → 清除提醒标记
+  if (userInitiated && !wasOn && caps.webSearch) {
+    deepThinkHintShown = true
+    showDeepThinkOffHint.value = false
+  }
+}
 let eventSource = null
 // 会话 ID：同一页面窗口内保持不变，后端据此维护多轮对话记忆
 const chatId = Date.now().toString(36)
@@ -333,10 +359,6 @@ const classifyMessage = (msg) => {
   // 7. 其他 → 闲聊
   return 'casual'
 }
-
-// 能力提示横幅（query 消息且未开启任何能力时显示）
-const showCapHint = ref(false)
-let capHintTimer = null
 
 // ========== 配额状态 ==========
 const quotaReached = ref(false)
@@ -665,14 +687,15 @@ const sendMessage = async (message) => {
     if (!id) return // 创建失败，中止发送
   }
 
-  // 前置意图校验：查询类消息 + 未开启任何检索能力 → 显示柔和提示
-  const intent = classifyMessage(message)
-  const hasAnyCap = activeCaps.value.webSearch || activeCaps.value.knowledgeBase
-  if (intent === 'query' && !hasAnyCap) {
-    showCapHint.value = true
-    // 5 秒后自动隐藏提示
-    if (capHintTimer) clearTimeout(capHintTimer)
-    capHintTimer = setTimeout(() => { showCapHint.value = false }, 5000)
+  // 深度思考已关闭 + 实时性问题 → 温和提醒一次（每会话最多1次，避免打扰）
+  // 不阻断发送，仅提示用户可开启深度思考获取更准确信息
+  if (!activeCaps.value.webSearch && !deepThinkHintShown) {
+    const isRealtimeQuery = /天气|新闻|今天|今日|现在|最新|最近|实时|价格|股价|汇率|比分|热搜|榜单/.test(message)
+    if (isRealtimeQuery) {
+      showDeepThinkOffHint.value = true
+      deepThinkHintShown = true
+      setTimeout(() => { showDeepThinkOffHint.value = false }, 6000)
+    }
   }
 
   // 判断是否是当前会话的首条用户消息（用于设置会话能力类型图标）
@@ -755,15 +778,20 @@ const sendMessage = async (message) => {
           await checkQuota()
           return
         }
-        // 尝试解析为结构化 JSON 事件
+        // ?????? JSON??? step() ?????? JSON ???
         if (data.startsWith('{')) {
-          try {
-            const parsed = JSON.parse(data)
-            handleStructuredEvent(parsed)
-            return
-          } catch (_) {
-            // 非 JSON，降级为纯文本
+          const lines = data.split('\n')
+          let parsedAny = false
+          for (const line of lines) {
+            const t = line.trim()
+            if (!t.startsWith('{')) continue
+            try {
+              const parsed = JSON.parse(t)
+              handleStructuredEvent(parsed)
+              parsedAny = true
+            } catch (_) {}
           }
+          if (parsedAny) return
         }
         // 纯文本降级：直接追加
         chatStore.activeMessages[aiMessageIndex].content += data
@@ -776,12 +804,13 @@ const sendMessage = async (message) => {
       },
       // 异常断开：尝试保存已收到的内容
       async () => {
-        const content = chatStore.activeMessages[aiMessageIndex]?.content || ''
-        if (content) {
+        const msg = chatStore.activeMessages[aiMessageIndex]
+        const content = msg?.content || ''
+        // content 为空或仍是初始占位符「思考中…」→ 没收到任何有效回答，显示错误提示而非存占位符
+        if (!content || content === '思考中…') {
+          if (msg) msg.content = '连接失败，请检查后端是否已启动或登录状态是否有效。'
+        } else {
           await chatStore.persistMessage('assistant', content, lockedSessionId)
-        }
-        if (!chatStore.activeMessages[aiMessageIndex]?.content) {
-          chatStore.activeMessages[aiMessageIndex].content = '连接失败，请检查后端是否已启动。'
         }
         connectionStatus.value = 'disconnected'
         if (eventSource) { eventSource.close(); eventSource = null }
@@ -1108,7 +1137,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (eventSource) eventSource.close()
-  if (capHintTimer) clearTimeout(capHintTimer)
 })
 </script>
 

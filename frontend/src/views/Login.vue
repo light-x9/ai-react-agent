@@ -6,14 +6,6 @@
       <span class="blob blob-b" />
     </div>
 
-    <!-- 返回首页 -->
-    <button class="back-home" @click="router.push('/')">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M19 12H5M12 19l-7-7 7-7" />
-      </svg>
-      <span>返回首页</span>
-    </button>
-
     <!-- 卡片 -->
     <div class="auth-card">
       <!-- Header -->
@@ -264,29 +256,6 @@ const handleSubmit = async () => {
   animation: drift 24s ease-in-out infinite alternate-reverse;
 }
 
-/* ---------- 返回首页 ---------- */
-.back-home {
-  position: absolute;
-  top: 24px;
-  left: 24px;
-  z-index: 2;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 100px;
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  background: white;
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-  transition: all 0.2s;
-}
-.back-home:hover {
-  color: var(--accent);
-  border-color: var(--border-active);
-}
-
 /* ---------- 卡片 ---------- */
 .auth-card {
   position: relative;
@@ -520,6 +489,5 @@ const handleSubmit = async () => {
 @media (max-width: 480px) {
   .auth-card { padding: 32px 24px 24px; border-radius: 16px; }
   .auth-title { font-size: 1.375rem; }
-  .back-home { top: 16px; left: 16px; }
 }
 </style>
