@@ -67,8 +67,9 @@ export const connectSSE = (url, body, onMessage, onError) => {
     signal: controller.signal
   }).then(async (response) => {
     if (!response.ok) {
-      // 401：token 失效，清登录态跳登录页
-      if (response.status === 401) {
+      // 401/403：token 失效或缺失，清登录态跳登录页
+      // 本系统未配置 AuthenticationEntryPoint，未认证请求返回 403 而非 401
+      if (response.status === 401 || response.status === 403) {
         localStorage.removeItem('token')
         localStorage.removeItem('username')
         localStorage.removeItem('react-agent-chat')
@@ -108,15 +109,19 @@ export const connectSSE = (url, body, onMessage, onError) => {
     close: () => controller.abort()
   }
 }
-
 function parseSSEChunk(chunk, dispatch) {
-  const lines = chunk.split('\n')
+  const lines = chunk.split("\n")
+  let currentData = null
   for (const line of lines) {
-    if (line.startsWith('data:')) {
-      const data = line.slice(5).trim()
-      if (data) dispatch(data)
+    if (line.startsWith("data:")) {
+      if (currentData !== null) { dispatch(currentData) }
+      currentData = line.slice(5).trim()
+    } else if (currentData !== null) {
+      const t = line.trim()
+      if (t) { currentData += "\n" + t }
     }
   }
+  if (currentData !== null && currentData) { dispatch(currentData) }
 }
 
 // ============ 认证接口 ============

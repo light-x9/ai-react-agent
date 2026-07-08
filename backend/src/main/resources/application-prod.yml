@@ -5,7 +5,7 @@
 spring:
   # ---- 数据库（生产环境使用独立实例） ----
   datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/react_agent}
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/react_agent}
     username: ${DB_USERNAME:postgres}
     password: ${PG_PASSWORD:}
     driver-class-name: org.postgresql.Driver
@@ -28,14 +28,13 @@ spring:
 # ---- 外部 API 密钥 ----
 serper:
   api-key: ${SERPER_API_KEY:}
-amap:
-  api-key: ${AMAP_API_KEY:}
-AMAP_MAPS_API_KEY: ${amap.api-key}
+# 高德地图 MCP Server 的 API Key 通过 mcp-servers.json env 硬编码（Spring 占位符对其无效）
+# 生产环境请在 mcp-servers.json 中设置或通过部署脚本覆盖
 PEXELS_API_KEY: ${PEXELS_API_KEY:}
 
 # ---- CORS：生产环境必须设为前端域名 ----
 cors:
-  allowed-origins: ${CORS_ORIGINS:https://yourdomain.com}
+  allowed-origins: ${CORS_ORIGINS:*}
 
 # ---- LightManus 配置 ----
 lightmanus:
