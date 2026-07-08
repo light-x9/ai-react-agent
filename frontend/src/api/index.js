@@ -68,7 +68,6 @@ export const connectSSE = (url, body, onMessage, onError) => {
   }).then(async (response) => {
     if (!response.ok) {
       // 401/403：token 失效或缺失，清登录态跳登录页
-      // 本系统未配置 AuthenticationEntryPoint，未认证请求返回 403 而非 401
       if (response.status === 401 || response.status === 403) {
         localStorage.removeItem('token')
         localStorage.removeItem('username')
@@ -144,7 +143,7 @@ export const uploadKnowledgeBase = async (file, onProgress) => {
   const formData = new FormData()
   formData.append('file', file)
   const response = await request.post('/knowledge-base/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+    // 不手动设置 Content-Type，让 axios 自动生成带 boundary 的正确值
     onUploadProgress: onProgress
   })
   return response.data

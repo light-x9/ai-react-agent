@@ -34,6 +34,8 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final AuthRateLimitFilter authRateLimitFilter;
+    private final AuthenticationEntryPointImpl authenticationEntryPoint;
+    private final AccessDeniedHandlerImpl accessDeniedHandler;
 
     /**
      * 允许的跨域来源域名（逗号分隔）
@@ -61,6 +63,10 @@ public class SecurityConfig {
                         "/favicon.ico"
                 ).permitAll()
                 .anyRequest().authenticated()
+            )
+            .exceptionHandling(e -> e
+                .authenticationEntryPoint(authenticationEntryPoint)   // 未认证 → 401 JSON
+                .accessDeniedHandler(accessDeniedHandler)            // 无权限 → 403 JSON
             )
             .addFilterBefore(authRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
