@@ -1,4 +1,4 @@
-﻿spring:
+spring:
   application:
     name: react-agent
   autoconfigure:
@@ -42,7 +42,7 @@
       max-file-size: 10MB
       max-request-size: 11MB
 
-  # Tomcat 鍏ㄥ眬璇锋眰浣撳ぇ灏忛檺鍒讹紙闈?multipart 鐨?POST/PUT 璇锋眰锛岄槻姝㈠唴瀛?DoS锛?
+  # Tomcat 全局请求体大小限制（非 multipart 的 POST/PUT 请求，防止内存 DoS）
   tomcat:
     max-http-form-post-size: 1MB
 
@@ -71,33 +71,33 @@ knife4j:
   setting:
     language: zh_cn
 
-# 淇敼鏃ュ織绾у埆锛屾煡鐪?Spring AI 鏇村璋冪敤缁嗚妭
+# 修改日志级别，查看 Spring AI 更多调用细节
 logging:
   level:
     org.springframework.ai: DEBUG
 
-# LightManus 宸ュ叿瀹夊叏閰嶇疆
+# LightManus 工具安全配置
 lightmanus:
   tool:
     terminal:
-      # 缁堢宸ュ叿寮€鍏筹細鍏綉鐜蹇呴』鍏抽棴锛圠LM 鍙墽琛?shell锛岄粦鍚嶅崟鍙缁曡繃锛?
-      # 浠呭湪鍙楁帶鍐呯綉鍦烘櫙鎴栨湰鍦板紑鍙戞椂璁句负 true
+      # 终端工具开关：公网环境必须关闭（LLM 可执行 shell，黑名单可被绕过）
+      # 仅在受控内网场景或本地开发时设为 true
       enabled: false
   quota:
-    # 姣忕敤鎴锋瘡鏃ュ璇濅笂闄?
+    # 每用户每日对话上限
     daily-chat: 100
-    # 姣忕敤鎴锋瘡鏃ヨ仈缃戞悳绱笂闄?
+    # 每用户每日联网搜索上限
     daily-web-search: 30
 
-# CORS 閰嶇疆锛堥€楀彿鍒嗛殧鐨勫煙鍚嶅垪琛紝"*" 琛ㄧず鍏佽鎵€鏈夛級
+# CORS 配置（逗号分隔的域名列表，"*" 表示允许所有）
 cors:
   allowed-origins: "*"
 
-# JWT 璁よ瘉閰嶇疆
+# JWT 认证配置
 jwt:
-  # HS256 瀵嗛挜 鈥斺€?鐢熶骇鐜蹇呴』閫氳繃鐜鍙橀噺 JWT_SECRET 瑕嗙洊锛?
-  # 鐢熸垚鏂瑰紡锛歰penssl rand -base64 48
-  # 榛樿 fallback 浠呯敤浜庢湰鍦板紑鍙戯紙鍏綉浣跨敤榛樿鍊肩瓑浜庤８濂旓級
+  # HS256 密钥 —— 生产环境必须通过环境变量 JWT_SECRET 覆盖！
+  # 生成方式：openssl rand -base64 48
+  # 默认 fallback 仅用于本地开发（公网使用默认值等于裸奔）
   secret: ${JWT_SECRET:jwt-dev-secret-key-change-in-production-please-use-random-32bytes}
-  # token 鏈夋晥鏈燂紙姣锛夛紝榛樿 24 灏忔椂
+  # token 有效期（毫秒），默认 24 小时
   expiration: 86400000
