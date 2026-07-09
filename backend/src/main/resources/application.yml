@@ -87,6 +87,11 @@ lightmanus:
     daily-chat: 100
     # 每用户每日联网搜索上限
     daily-web-search: 30
+  file:
+    # 单文件大小上限（MB）：防止 Agent 生成超大文件撑爆磁盘
+    max-size-mb: 50
+    # 单会话累计生成文件大小上限（MB）：防止 Agent ReAct 循环写爆磁盘
+    max-total-per-chat-mb: 500
 
 # CORS 配置（逗号分隔的域名列表，"*" 表示允许所有）
 cors:

@@ -46,6 +46,22 @@ public class FileContextHolder {
     }
 
     /**
+     * 获取当前线程的 userId（工具方法调用，由 BaseAgent 从 SecurityContext 注入）
+     * <p>
+     * 用于文件注册时记录归属用户，供下载接口做越权校验。
+     *
+     * @return userId，未设置时返回 null
+     */
+    public static String getUserId() {
+        Map<String, Object> ctx = CONTEXT.get();
+        if (ctx == null) {
+            return null;
+        }
+        Object val = ctx.get("userId");
+        return val instanceof String s ? s : null;
+    }
+
+    /**
      * 记录本次请求生成的一个文件 ID（由文件工具在注册元数据后调用）
      *
      * @param fileId 生成的文件 ID

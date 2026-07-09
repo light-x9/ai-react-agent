@@ -5,6 +5,9 @@ import cn.hutool.http.HttpUtil;
 import com.light.reactagent.constant.FileConstant;
 import com.light.reactagent.tools.file.FileContextHolder;
 import com.light.reactagent.tools.file.FileMetadataManager;
+import com.light.reactagent.tools.file.FileStorageException;
+import com.light.reactagent.tools.file.FileToolSupport;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -18,11 +21,10 @@ import java.nio.file.Path;
  * <p>
  * 安全策略：文件名经路径穿越校验，下载完成后注册元数据供前端下载。
  */
+@Slf4j
 public class ResourceDownloadTool {
 
     private final FileMetadataManager fileMetadataManager;
-
-    private final File baseDir = new File(FileConstant.FILE_SAVE_DIR + "/download");
 
     public ResourceDownloadTool() {
         this.fileMetadataManager = null;
@@ -53,29 +55,41 @@ public class ResourceDownloadTool {
             return ssrfCheck;
         }
 
-        File target = resolveSafe(fileName);
+        String chatId = FileContextHolder.getChatId();
+        String writeName = fileName;
+        if (fileMetadataManager != null && chatId != null) {
+            // 写盘前解析去重后的最终存储名，避免同会话同名资源互相覆盖
+            writeName = fileMetadataManager.resolveStorageName(chatId, fileName);
+        }
+        File target = resolveSafe(writeName);
         if (target == null) {
             return "下载失败：文件路径越界";
         }
         try {
-            FileUtil.mkdir(baseDir);
+            FileUtil.mkdir(FileToolSupport.resolveBaseDir("download"));
             HttpUtil.downloadFile(url, target);
             // 不向调用方（LLM）暴露服务器绝对路径
             String result = "文件下载成功：" + target.getName();
 
             // 注册文件元数据，使前端可通过 fileId 下载
             if (fileMetadataManager != null) {
-                String chatId = FileContextHolder.getChatId();
                 if (chatId != null && target.exists()) {
+                    try {
                     String fileId = fileMetadataManager.registerFile(
                             chatId,
+                            FileContextHolder.getUserId(),
                             target.getName(),
-                            resolveContentType(fileName),
+                            "download/" + FileToolSupport.chatSub(),
                             resolveContentType(fileName),
                             target.length()
                     );
-                    result += " [fileId=" + fileId + "]";
-                    FileContextHolder.recordFileId(fileId);
+                        result += " [fileId=" + fileId + "]";
+                        FileContextHolder.recordFileId(fileId);
+                    } catch (FileStorageException e) {
+                        // 文件超限被拒，提示 LLM 停止继续生成，避免裸异常中断流程
+                        log.warn("[ResourceDownloadTool] 文件生成被拒：{}", e.getMessage());
+                        result += " [文件生成被拒绝：" + e.getMessage() + "]";
+                    }
                 }
             }
             return result;
@@ -85,8 +99,8 @@ public class ResourceDownloadTool {
     }
 
     private File resolveSafe(String fileName) {
-        Path basePath = baseDir.toPath().normalize();
-        Path targetPath = new File(baseDir, fileName).toPath().normalize();
+        Path basePath = FileToolSupport.resolveBaseDir("download").toPath().normalize();
+        Path targetPath = new File(FileToolSupport.resolveBaseDir("download"), fileName).toPath().normalize();
         if (!targetPath.startsWith(basePath)) {
             return null;
         }

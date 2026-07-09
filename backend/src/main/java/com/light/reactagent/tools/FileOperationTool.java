@@ -1,9 +1,11 @@
 package com.light.reactagent.tools;
 
 import cn.hutool.core.io.FileUtil;
-import com.light.reactagent.constant.FileConstant;
 import com.light.reactagent.tools.file.FileContextHolder;
+import com.light.reactagent.tools.file.FileToolSupport;
 import com.light.reactagent.tools.file.FileMetadataManager;
+import com.light.reactagent.tools.file.FileStorageException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -16,14 +18,10 @@ import java.nio.file.Path;
  * 安全策略：所有读写都限制在 baseDir 沙箱目录内，传入的 fileName 经 normalize
  * 后校验是否仍在 baseDir 之下，越界（如 ../../application-local.yml）直接拒绝。
  */
+@Slf4j
 public class FileOperationTool {
 
     private final FileMetadataManager fileMetadataManager;
-
-    /**
-     * 文件读写基准目录（沙箱），所有文件操作只能在此目录内进行
-     */
-    private final File baseDir = new File(FileConstant.FILE_SAVE_DIR + "/file");
 
     public FileOperationTool() {
         this.fileMetadataManager = null;
@@ -53,29 +51,41 @@ public class FileOperationTool {
     public String writeFile(@ToolParam(description = "Name of the file to write") String fileName,
                             @ToolParam(description = "Content to write to the file") String content
     ) {
-        File target = resolveSafe(fileName);
+        // 写盘前先解析去重后的最终存储名，确保物理文件名 == 注册 storageName，避免同会话同名覆盖
+        String chatId = FileContextHolder.getChatId();
+        String writeName = fileName;
+        if (fileMetadataManager != null && chatId != null) {
+            writeName = fileMetadataManager.resolveStorageName(chatId, fileName);
+        }
+        File target = resolveSafe(writeName);
         if (target == null) {
             return "拒绝访问：文件路径越界，只能写入工作区内的文件。";
         }
         try {
-            FileUtil.mkdir(baseDir);
+            FileUtil.mkdir(FileToolSupport.resolveBaseDir("file"));
             FileUtil.writeUtf8String(content, target);
             // 出于安全考虑，不向调用方（LLM）暴露服务器绝对路径
             String result = "文件写入成功：" + target.getName();
 
             // 注册文件元数据，使前端可通过 fileId 下载该文件
             if (fileMetadataManager != null) {
-                String chatId = FileContextHolder.getChatId();
                 if (chatId != null && target.exists()) {
+                    try {
                     String fileId = fileMetadataManager.registerFile(
                             chatId,
+                            FileContextHolder.getUserId(),
                             target.getName(),
-                            resolveContentType(fileName),
+                            "file/" + FileToolSupport.chatSub(),
                             resolveContentType(fileName),
                             target.length()
                     );
-                    result += " [fileId=" + fileId + "]";
-                    FileContextHolder.recordFileId(fileId);
+                        result += " [fileId=" + fileId + "]";
+                        FileContextHolder.recordFileId(fileId);
+                    } catch (FileStorageException e) {
+                        // 文件超限被拒，提示 LLM 停止继续生成，避免裸异常中断流程
+                        log.warn("[FileOperationTool] 文件生成被拒：{}", e.getMessage());
+                        result += " [文件生成被拒绝：" + e.getMessage() + "]";
+                    }
                 }
             }
             return result;
@@ -96,9 +106,9 @@ public class FileOperationTool {
         if (fileName == null || fileName.isBlank()) {
             return null;
         }
-        Path basePath = baseDir.toPath().normalize();
+        Path basePath = FileToolSupport.resolveBaseDir("file").toPath().normalize();
         // new File(baseDir, fileName) 会把 fileName 当作相对路径拼接，再 normalize 消除 ..
-        Path targetPath = new File(baseDir, fileName).toPath().normalize();
+        Path targetPath = new File(FileToolSupport.resolveBaseDir("file"), fileName).toPath().normalize();
         if (!targetPath.startsWith(basePath)) {
             return null;
         }

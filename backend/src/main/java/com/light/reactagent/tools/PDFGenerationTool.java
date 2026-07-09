@@ -10,6 +10,9 @@ import com.itextpdf.layout.element.Paragraph;
 import com.light.reactagent.constant.FileConstant;
 import com.light.reactagent.tools.file.FileContextHolder;
 import com.light.reactagent.tools.file.FileMetadataManager;
+import com.light.reactagent.tools.file.FileStorageException;
+import com.light.reactagent.tools.file.FileToolSupport;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
 
@@ -27,6 +30,7 @@ import java.util.List;
  * <p>
  * 生成后自动注册元数据到 FileMetadataManager，返回结果中携带 fileId 供前端下载。
  */
+@Slf4j
 public class PDFGenerationTool {
 
     private final FileMetadataManager fileMetadataManager;
@@ -35,23 +39,24 @@ public class PDFGenerationTool {
         this.fileMetadataManager = fileMetadataManager;
     }
 
-    /**
-     * PDF 文件写入基准目录（沙箱），所有 PDF 只能写入此目录
-     */
-    private final File pdfBaseDir = new File(FileConstant.FILE_SAVE_DIR + "/pdf");
-
     @Tool(description = "Generate a PDF file from markdown content. Supports headings, lists, code blocks, quotes, and Chinese text. Returns a fileId for download.", returnDirect = false)
     public String generatePDF(
             @ToolParam(description = "Name of the file to save the generated PDF, e.g. report.pdf") String fileName,
             @ToolParam(description = "Markdown content to convert to PDF") String content) {
         // 安全校验：防止路径穿越（沙箱模式，与 FileOperationTool 一致）
-        File target = resolveSafePdfPath(fileName);
+        String normalizedName = fileName.toLowerCase().endsWith(".pdf") ? fileName : fileName + ".pdf";
+        String chatId = FileContextHolder.getChatId();
+        if (chatId != null) {
+            // 写盘前解析去重后的最终存储名，避免同会话同名 PDF 互相覆盖
+            normalizedName = fileMetadataManager.resolveStorageName(chatId, normalizedName);
+        }
+        File target = resolveSafePdfPath(normalizedName);
         if (target == null) {
             return "PDF 生成失败：文件名非法或越界";
         }
         try {
             // 创建目录
-            FileUtil.mkdir(pdfBaseDir);
+            FileUtil.mkdir(FileToolSupport.resolveBaseDir("pdf"));
             // 创建 PdfWriter 和 PdfDocument 对象
             try (PdfWriter writer = new PdfWriter(target.getAbsolutePath());
                  PdfDocument pdf = new PdfDocument(writer);
@@ -72,19 +77,25 @@ public class PDFGenerationTool {
 
             // 注册元数据
             String result = "PDF 生成成功：" + target.getName();
-            String chatId = FileContextHolder.getChatId();
             if (chatId != null) {
                 if (target.exists()) {
-                    String fileId = fileMetadataManager.registerFile(
-                            chatId,
-                            target.getName(),
-                            "pdf",
-                            "application/pdf",
-                            target.length()
-                    );
-                    result += " [fileId=" + fileId + "]";
-                    // 记录到本次请求的文件列表，供 final 事件汇总返回给前端
-                    FileContextHolder.recordFileId(fileId);
+                    try {
+                        String fileId = fileMetadataManager.registerFile(
+                                chatId,
+                                FileContextHolder.getUserId(),
+                                target.getName(),
+                                "pdf/" + FileToolSupport.chatSub(),
+                                "application/pdf",
+                                target.length()
+                        );
+                        result += " [fileId=" + fileId + "]";
+                        // 记录到本次请求的文件列表，供 final 事件汇总返回给前端
+                        FileContextHolder.recordFileId(fileId);
+                    } catch (FileStorageException e) {
+                        // 文件超限被拒，提示 LLM 停止继续生成，避免裸异常中断流程
+                        log.warn("[PDFGenerationTool] 文件生成被拒：{}", e.getMessage());
+                        result += " [文件生成被拒绝：" + e.getMessage() + "]";
+                    }
                 }
             }
             return result;
@@ -114,8 +125,8 @@ public class PDFGenerationTool {
         }
         // 确保扩展名为 .pdf
         String normalizedName = fileName.toLowerCase().endsWith(".pdf") ? fileName : fileName + ".pdf";
-        Path basePath = pdfBaseDir.toPath().normalize();
-        Path targetPath = new File(pdfBaseDir, normalizedName).toPath().normalize();
+        Path basePath = FileToolSupport.resolveBaseDir("pdf").toPath().normalize();
+        Path targetPath = new File(FileToolSupport.resolveBaseDir("pdf"), normalizedName).toPath().normalize();
         if (!targetPath.startsWith(basePath)) {
             return null;
         }

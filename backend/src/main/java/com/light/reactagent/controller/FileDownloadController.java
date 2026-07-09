@@ -9,6 +9,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -22,7 +23,9 @@ import java.nio.charset.StandardCharsets;
  * 文件下载接口
  * <p>
  * 供前端下载 AI 生成的文件（PDF / MD 等）。
- * 通过 fileId 定位文件，并校验 chatId 归属（防止 A 下载 B 的文件）。
+ * 通过 fileId 定位文件，并做双层归属校验：
+ *   1) fileId 必须属于该 chatId；
+ *   2) 生成该文件的用户（metadata.userId）必须等于当前登录用户，防止 A 下载 B 的文件。
  */
 @RestController
 @RequestMapping("/files")
@@ -59,7 +62,16 @@ public class FileDownloadController {
             return ResponseEntity.notFound().build();
         }
 
-        // 2. 定位物理文件
+        // 2. 越权校验：当前登录用户必须等于文件归属用户（防止跨用户下载）
+        //    对"无主"的历史文件（userId 为空，本次改造前生成的）保持兼容放行，避免误伤运行中数据。
+        String currentUser = currentUserId();
+        String owner = metadata.getUserId();
+        if (owner != null && currentUser != null && !owner.equals(currentUser)) {
+            log.warn("[FileDownload] 拒绝下载：越权（fileId={}, owner={}, currentUser={}）", fileId, owner, currentUser);
+            return ResponseEntity.notFound().build();
+        }
+
+        // 3. 定位物理文件
         String absolutePath = fileMetadataManager.resolveAbsolutePath(chatId, fileId);
         if (absolutePath == null) {
             return ResponseEntity.notFound().build();
@@ -70,7 +82,7 @@ public class FileDownloadController {
             return ResponseEntity.notFound().build();
         }
 
-        // 3. 构建响应（文件名 URL 编码，防止中文乱码）
+        // 4. 构建响应（文件名 URL 编码，防止中文乱码）
         String encodedFileName = URLEncoder.encode(metadata.getOriginalName(), StandardCharsets.UTF_8)
                 .replace("+", "%20");
         Resource resource = new FileSystemResource(file);
@@ -80,5 +92,18 @@ public class FileDownloadController {
                         "attachment; filename=\"" + encodedFileName + "\"; filename*=UTF-8''" + encodedFileName)
                 .contentLength(file.length())
                 .body(resource);
+    }
+
+    /**
+     * 从 SecurityContext 取当前登录用户 ID（与项目内其他 Controller 一致：auth.getName() 即 userId）
+     */
+    private String currentUserId() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated()
+                && auth.getPrincipal() != null
+                && !"anonymousUser".equals(auth.getPrincipal())) {
+            return auth.getName();
+        }
+        return null;
     }
 }

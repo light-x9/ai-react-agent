@@ -14,6 +14,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -145,7 +146,17 @@ public abstract class BaseAgent {
             // 注入工具上下文（如 chatId）到 FileContextHolder，供文件工具做归属隔离
             Map<String, Object> toolContext = buildToolContext();
             if (toolContext != null) {
-                FileContextHolder.setAll(toolContext);
+                // 复制为可变 Map（buildToolContext 可能返回不可变 Map），
+                // 并注入当前登录用户 userId（从已捕获的 SecurityContext 取），
+                // 供文件工具注册时记录归属，下载接口据此做越权校验。
+                Map<String, Object> ctx = new HashMap<>(toolContext);
+                var auth = securityContext.getAuthentication();
+                if (auth != null && auth.isAuthenticated()
+                        && auth.getPrincipal() != null
+                        && !"anonymousUser".equals(auth.getPrincipal())) {
+                    ctx.put("userId", auth.getName());
+                }
+                FileContextHolder.setAll(ctx);
             }
             // 1、基础校验
             try {
