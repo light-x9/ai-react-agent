@@ -55,3 +55,8 @@ frontend/.vite/
 
 # Maven timing data (generated at runtime)
 backend/.mvn/timing/
+
+# Temp / scratch files (one-off verify scripts, ad-hoc outputs — never commit)
+_sa.out
+verify_fix.sh
+*.out
