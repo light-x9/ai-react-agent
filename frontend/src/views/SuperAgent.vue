@@ -299,8 +299,10 @@ const onCapabilityChange = (caps, userInitiated = false) => {
   }
 }
 let eventSource = null
-// 会话 ID：同一页面窗口内保持不变，后端据此维护多轮对话记忆
-const chatId = Date.now().toString(36)
+// 会话 ID：直接复用后端「会话主键」activeId（DB 会话 id）。
+// 这样每次「新对话」(createSession) 都会拿到全新的 chatId，
+// 后端记忆与文件隔离天然按「会话」维度生效，不会跨会话串记忆 / 串文件。
+const chatId = computed(() => chatStore.activeId != null ? String(chatStore.activeId) : 'pre_session')
 
 // ========== 消息意图识别（闲聊 vs 信息查询） ==========
 
@@ -733,13 +735,6 @@ const sendMessage = async (message) => {
     const scenario = buildMockScenario(message)
     runMockReActStream(aiMessageIndex, scenario)
   } else {
-    // 构建历史上下文：取最近6轮对话
-      const historyMessages = chatStore.activeMessages.slice(-6);
-      const historyText = historyMessages
-        .filter(m => m.content && !m.type)
-        .map(m => (m.isUser ? 'User: ' : 'Assistant: ') + m.content)
-        .join('\n');
-
       // 锁定当前会话 ID，避免 SSE 持续期间 activeId 被切换导致 AI 回复存错会话
       const lockedSessionId = chatStore.activeId
 
@@ -801,7 +796,7 @@ const sendMessage = async (message) => {
 
       // 关键修复：把本会话 chatId 一并发给后端，否则后端会用自动生成的 UUID 注册文件，
       // 导致前端下载时用的 chatId 与注册时的不一致 → 下载接口 404。
-      eventSource = connectSSE('/ai/manus/chat', { message, history: historyText, webSearch: activeCaps.value.webSearch, knowledgeBase: activeCaps.value.knowledgeBase, chatId },
+      eventSource = connectSSE('/ai/manus/chat', { message, webSearch: activeCaps.value.webSearch, knowledgeBase: activeCaps.value.knowledgeBase, chatId: chatId.value },
       // onMessage：解析结构化 JSON / 纯文本 / [DONE]
       async (data) => {
         if (data === '[DONE]') {
