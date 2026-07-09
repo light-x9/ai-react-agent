@@ -60,3 +60,6 @@ backend/.mvn/timing/
 _sa.out
 verify_fix.sh
 *.out
+
+# Design docs / analysis reports in root (untracked scratch docs)
+*.md
