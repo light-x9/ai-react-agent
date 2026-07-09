@@ -3,17 +3,7 @@
     <!-- 聊天记录区域 -->
     <div class="chat-messages" ref="messagesContainer">
             <div v-if="!hasUserMessages" class="welcome-panel">
-        <div class="empty-brand" aria-hidden="true">
-          <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="18" cy="11" r="5.5" stroke="#6366f1" stroke-width="1.5" fill="none" opacity="0.4" />
-            <circle cx="10.5" cy="25" r="5.5" stroke="#6366f1" stroke-width="1.5" fill="none" opacity="0.4" />
-            <circle cx="25.5" cy="25" r="5.5" stroke="#6366f1" stroke-width="1.5" fill="none" opacity="0.4" />
-            <circle cx="18" cy="19" r="2" fill="#6366f1" opacity="0.6">
-              <animate attributeName="opacity" values="0.4;0.8;0.4" dur="3s" repeatCount="indefinite" />
-            </circle>
-          </svg>
-        </div>
-        <p class="empty-tagline">试试这样问：</p>
+        <p class="suggestion-label">试试这样开始：</p>
         <div class="suggestions">
           <button
             v-for="q in suggestedQuestions"
@@ -38,10 +28,39 @@
                 :cycles="msg.reactCycles"
                 :final-answer="msg.finalAnswer"
               />
-              <div v-else class="message-bubble">
-                <div class="message-content">
-                  {{ msg.content }}
-                  <span v-if="connectionStatus === 'connecting' && index === messages.length - 1" class="typing-indicator">▋</span>
+              <div v-else>
+                <!-- 推理过程面板：有步骤时展示 -->
+                <div v-if="msg.steps && msg.steps.length > 0" class="thinking-panel" :class="{ collapsed: msg.collapsed }">
+                  <div class="thinking-header" @click="msg.collapsed = !msg.collapsed">
+                    <span class="thinking-icon">🧠</span>
+                    <span class="thinking-title">推理过程</span>
+                    <span class="thinking-count" v-if="msg.collapsed">{{ msg.steps.length }} 步</span>
+                    <svg class="thinking-arrow" :class="{ rotated: !msg.collapsed }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                  </div>
+                  <div v-show="!msg.collapsed" class="thinking-body">
+                    <div v-for="(step, si) in msg.steps" :key="si" class="thinking-step">
+                      <div class="step-header">
+                        <span class="step-num">{{ si + 1 }}</span>
+                        <span class="step-label">步骤</span>
+                      </div>
+                      <div class="step-content">
+                        <div v-if="step.thought" class="step-thought">{{ stripMarkdown(step.thought) }}</div>
+                        <div v-if="step.tool" class="step-tool">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                          {{ step.tool }}
+                        </div>
+                        <div v-if="step.observation" class="step-observation">{{ stripMarkdown(step.observation) }}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <!-- 消息气泡 -->
+                <div class="message-bubble">
+                  <div class="message-content">
+                    <span v-if="msg.thinking" class="thinking-live">💭 思考中…</span>
+                    <span v-else>{{ stripMarkdown(msg.content) }}</span>
+                    <span v-if="connectionStatus === 'connecting' && index === messages.length - 1 && !msg.thinking" class="typing-indicator">▋</span>
+                  </div>
                 </div>
               </div>
               <div class="message-time">{{ formatTime(msg.time) }}</div>
@@ -171,6 +190,7 @@ import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import AiAvatarFallback from './AiAvatarFallback.vue'
 import ReActSteps from './ReActSteps.vue'
 import { downloadFile as downloadFileApi } from '@/api'
+import { stripMarkdown } from '@/utils/markdown'
 
 const props = defineProps({
   messages: {
@@ -212,8 +232,8 @@ const capabilities = [
     key: 'webSearch',
     name: '深度思考',
     desc: '多步推理 + 联网搜索，适合需要实时信息或复杂分析的问题',
-    color: '#4f46e5',
-    bg: 'rgba(79,70,229,0.08)'
+    color: '#2563eb',
+    bg: 'rgba(37, 99, 235,0.08)'
   },
   {
     key: 'knowledgeBase',
@@ -239,8 +259,9 @@ const toggleCap = (key) => {
 }
 
 /**
- * 题库：覆盖联网搜索 / 知识问答 / 代码生成 / 创意科普
- * 每次组件挂载时随机抽取 4 条展示
+ * 题库：覆盖联网搜索 / 知识问答 / 代码生成 / 创意科普，
+ * 以及美食、旅行、健康、人际、职场、理财、娱乐、家居等生活化场景。
+ * 每次组件挂载时随机抽取 4 条展示。
  */
 const QUESTION_POOL = [
   // 联网搜索
@@ -250,7 +271,6 @@ const QUESTION_POOL = [
   '今天北京的天气如何',
   // 知识问答
   '解释一下什么是 MCP 协议',
-  '总结一下 ReAct 推理的原理',
   '什么是大语言模型的幻觉问题',
   '解释一下量子计算的基本原理',
   '区块链的工作原理是什么',
@@ -259,9 +279,40 @@ const QUESTION_POOL = [
   '帮我写一个 Python 爬虫',
   '写一个 Docker Compose 配置',
   '帮我写一个 Vue 3 组件示例',
-  // 创意 / 科普
-  '用通俗的方式解释什么是神经网络',
+  // 美食 / 烹饪
+  '周末想做红烧肉，给我一个家常做法',
+  '用空气炸锅做鸡翅怎么做',
+  '减脂期一周三餐怎么安排比较合理',
+  // 旅行 / 出行
+  '帮我规划一个杭州三日游路线',
+  '带父母出游，哪些城市轻松又适合老人',
+  '第一次去日本自由行要注意什么',
+  // 健康 / 健身
+  '久坐腰酸有什么缓解动作',
+  '跑步新手如何避免受伤',
+  '睡前总是刷手机，怎么改善睡眠',
+  // 人际 / 情感
+  '怎么委婉地拒绝同事的不合理请求',
+  '和朋友闹矛盾了，该不该主动联系',
+  '怎么和性格强势的家人好好沟通',
+  // 职场 / 自我提升
+  '如何写一份让 HR 眼前一亮的简历',
+  '开会发言紧张，有什么克服方法',
+  '怎么向上司争取合理的涨薪',
+  // 理财 / 消费
+  '月薪一万，新手怎么开始理财',
+  '基金和股票的核心区别是什么',
+  '买笔记本怎么看配置不踩坑',
+  // 娱乐 / 阅读
+  '最近有什么高分悬疑剧推荐',
+  '适合通勤听的有声书推荐',
+  '周末宅家能做哪些不费钱的小事',
+  // 家居 / 生活
+  '小户型怎么收纳更省空间',
+  '新家除甲醛有哪些实用方法',
+  // 创意 / 写作
   '帮我写一首关于 AI 的诗',
+  '帮我写一段给朋友的生日祝福语',
   'React 和 Vue 有哪些主要区别',
 ]
 
@@ -407,8 +458,10 @@ onMounted(() => {
 .chat-container {
   display: flex;
   flex-direction: column;
-  height: 78vh;
-  min-height: 500px;
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  margin: 0;
   background: var(--bg-card);
   border-radius: 16px;
   border: 1px solid var(--border-subtle);
@@ -420,16 +473,13 @@ onMounted(() => {
 /* ---------- 消息滚动区 ---------- */
 .chat-messages {
   flex: 1;
+  min-height: 0;
+  min-width: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px;
-  padding-bottom: 24px;
   display: flex;
   flex-direction: column;
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 120px;
 }
 
 /* ---------- 空状态引导页 ---------- */
@@ -437,89 +487,10 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
-  padding: 48px 16px 24px;
+  gap: 14px;
+  padding: 24px 16px;
+  margin: auto;
   animation: fadeUp 0.5s ease-out;
-}
-
-.welcome-hero {
-  text-align: center;
-  margin-bottom: 4px;
-}
-
-.welcome-title {
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  font-weight: 700;
-  line-height: 1.3;
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
-}
-
-.welcome-accent {
-  background: linear-gradient(135deg, #818cf8, #6366f1 60%, #a78bfa);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.welcome-subtitle {
-  margin-top: 8px;
-  font-family: var(--font-body);
-  font-size: 0.875rem;
-  line-height: 1.6;
-  color: var(--text-tertiary);
-}
-
-/* ---------- 功能卡片 ---------- */
-.feature-cards {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  width: 100%;
-  max-width: 720px;
-}
-
-.feature-card {
-  padding: 20px 18px;
-  border-radius: 14px;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
-  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
-}
-
-.feature-card:hover {
-  border-color: var(--border-active);
-  transform: translateY(-3px);
-  box-shadow: 0 6px 24px rgba(79,70,229,0.08);
-}
-
-.feature-card-icon {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 10px;
-  background: var(--accent-bg);
-  color: var(--accent);
-  margin-bottom: 12px;
-}
-
-.feature-card-title {
-  font-family: var(--font-body);
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 5px;
-}
-
-.feature-card-text {
-  font-family: var(--font-body);
-  font-size: 0.8125rem;
-  line-height: 1.55;
-  color: var(--text-tertiary);
 }
 
 /* ---------- 建议提问 ---------- */
@@ -551,7 +522,7 @@ onMounted(() => {
 }
 
 .suggestion-chip:hover {
-  background: white;
+  background: var(--bg-elevated);
   border-color: var(--border-active);
   color: var(--accent);
   transform: translateY(-1px);
@@ -578,6 +549,7 @@ onMounted(() => {
 .user-message {
   margin-left: auto;
   flex-direction: row;
+  max-width: 75%;
 }
 
 .ai-message {
@@ -615,7 +587,7 @@ onMounted(() => {
   color: var(--accent);
   font-size: 0.8125rem;
   font-weight: 600;
-  border: 1px solid rgba(79, 70, 229, 0.15);
+  border: 1px solid rgba(37, 99, 235, 0.15);
   border-radius: 50%;
 }
 
@@ -623,7 +595,7 @@ onMounted(() => {
 .ai-message-body {
   flex: 1;
   min-width: 0;
-  max-width: calc(100% - 46px);
+  max-width: 75%;
 }
 
 /* ---------- 用户气泡 ---------- */
@@ -656,6 +628,7 @@ onMounted(() => {
   font-size: 0.9375rem;
   line-height: 1.6;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .message-time {
@@ -676,13 +649,10 @@ onMounted(() => {
 
 /* ---------- 输入区 ---------- */
 .chat-input-container {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
   background: var(--bg-elevated);
   border-top: 1px solid var(--border-subtle);
   z-index: 100;
+  flex-shrink: 0;
 }
 
 .quick-cap-bar {
@@ -724,7 +694,7 @@ onMounted(() => {
 }
 
 .quick-cap-btn:hover {
-  background: white;
+  background: var(--bg-elevated);
   color: var(--accent);
   border-color: var(--border-active);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
@@ -734,7 +704,7 @@ onMounted(() => {
   background: var(--accent);
   color: white;
   border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.2);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.2);
 }
 
 .chat-input {
@@ -775,8 +745,8 @@ onMounted(() => {
 
 .input-box:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08);
-  background: white;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+  background: var(--bg-elevated);
 }
 
 /* ---------- 发送按钮 ---------- */
@@ -851,7 +821,7 @@ onMounted(() => {
 
 .file-card:hover {
   border-color: var(--border-active);
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.06);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.06);
 }
 
 .file-card-icon {
@@ -906,7 +876,7 @@ onMounted(() => {
   justify-content: center;
   border-radius: 8px;
   border: 1px solid var(--border-subtle);
-  background: white;
+  background: var(--bg-elevated);
   color: var(--accent);
   cursor: pointer;
   transition: background 0.2s, transform 0.15s;
@@ -926,7 +896,7 @@ onMounted(() => {
 .file-btn-spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(79, 70, 229, 0.2);
+  border: 2px solid rgba(37, 99, 235, 0.2);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -954,23 +924,189 @@ onMounted(() => {
   transform: translateY(8px);
 }
 
+/* ---------- 推理过程面板 ---------- */
+.thinking-panel {
+  margin-bottom: 10px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.04), rgba(124, 58, 237, 0.04));
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  overflow: hidden;
+  transition: all 0.25s ease;
+}
+
+.thinking-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.thinking-header:hover {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.thinking-icon {
+  font-size: 0.9375rem;
+}
+
+.thinking-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.thinking-count {
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+  margin-left: auto;
+  margin-right: 4px;
+}
+
+.thinking-arrow {
+  color: var(--text-tertiary);
+  transition: transform 0.25s ease;
+}
+
+.thinking-arrow.rotated {
+  transform: rotate(180deg);
+}
+
+.thinking-body {
+  padding: 0 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: fadeSlideDown 0.25s ease-out;
+}
+
+.thinking-step {
+  display: flex;
+  gap: 10px;
+  animation: fadeSlideIn 0.3s ease-out;
+}
+
+.step-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: white;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-label {
+  font-size: 0.625rem;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+.step-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.step-thought {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.step-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--accent);
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(37, 99, 235, 0.08);
+  width: fit-content;
+}
+
+.step-observation {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg-base);
+  border-left: 2px solid var(--border-subtle);
+}
+
+/* 折叠状态：只显示 header */
+.thinking-panel.collapsed .thinking-header {
+  padding: 8px 14px;
+}
+
+.thinking-panel.collapsed {
+  opacity: 0.85;
+}
+
+.thinking-panel.collapsed:hover {
+  opacity: 1;
+  border-color: rgba(37, 99, 235, 0.25);
+}
+
+/* 思考中实时提示 */
+.thinking-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  font-size: 0.875rem;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes fadeSlideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 /* ---------- 响应式 ---------- */
 @media (max-width: 768px) {
   .message { max-width: 95%; }
+  .ai-message-body { max-width: 95%; }
+  .user-message { max-width: 95%; }
   .message-content { font-size: 0.875rem; }
   .chat-input { padding: 10px 12px 12px; }
   .quick-cap-bar { padding: 8px 12px 0; }
-  .feature-cards { grid-template-columns: 1fr; gap: 12px; max-width: 420px; }
 }
 
 @media (max-width: 480px) {
   .avatar { width: 32px; height: 32px; }
   .message-bubble { padding: 10px 14px; }
   .message-content { font-size: 0.8125rem; }
-  .chat-messages { bottom: 120px; }
-  .welcome-panel { padding: 20px 12px 16px; }
-  .welcome-title { font-size: 1.25rem; }
-  .feature-card { padding: 16px 14px; }
+  .welcome-panel { padding: 20px 12px; }
 }
 
 /* ---------- 配额达上限横幅 ---------- */

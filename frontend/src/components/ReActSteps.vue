@@ -48,7 +48,7 @@
           </div>
           <div class="step-body">
             <span class="step-tag">Thought</span>
-            <p class="step-text">{{ cycle.thought.content }}</p>
+            <p class="step-text">{{ stripMarkdown(cycle.thought.content) }}</p>
           </div>
         </div>
 
@@ -99,7 +99,7 @@
           <div class="step-body">
             <span class="step-tag">Observation</span>
             <div class="observation-card" :class="{ expanded: cycle.observation.expanded }">
-              <p class="observation-summary">{{ cycle.observation.summary }}</p>
+              <p class="observation-summary">{{ stripMarkdown(cycle.observation.summary) }}</p>
               <button
                 v-if="cycle.observation.rawResult"
                 class="observation-toggle"
@@ -125,14 +125,17 @@
       <div class="final-divider">
         <span>最终回答</span>
       </div>
-      <div class="final-content">{{ finalAnswer }}</div>
+      <div class="final-content">{{ stripMarkdown(finalAnswer) }}</div>
     </div>
   </div>
 </template>
 
 <script setup>
+import { stripMarkdown } from '@/utils/markdown'
+
 // ReActSteps — 接收结构化推理数据并渲染时间线
 // 仅做展示，不含业务逻辑
+
 const props = defineProps({
   cycles: {
     type: Array,
@@ -146,13 +149,13 @@ const props = defineProps({
 
 // 工具对应主题色
 const toolColors = {
-  searchWeb: '#4f46e5',
+  searchWeb: '#2563eb',
   readFile: '#0891b2',
   writeFile: '#ca8a04',
   searchKnowledge: '#059669',
   listFiles: '#7c3aed',
   executeCode: '#dc2626',
-  default: '#6366f1'
+  default: '#2563eb'
 }
 
 const toolColor = (tool) => toolColors[tool] || toolColors.default
@@ -196,7 +199,7 @@ const formatJson = (val) => {
   height: 8px;
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.12);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
 }
 
 .cycle-label {
@@ -246,9 +249,9 @@ const formatJson = (val) => {
 }
 
 .step-thought .step-marker {
-  color: #818cf8;
-  border-color: rgba(129, 140, 248, 0.3);
-  background: rgba(129, 140, 248, 0.06);
+  color: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.06);
 }
 
 .step-action .step-marker {
@@ -281,8 +284,8 @@ const formatJson = (val) => {
 }
 
 .step-thought .step-tag {
-  background: rgba(129, 140, 248, 0.08);
-  color: #818cf8;
+  background: rgba(59, 130, 246, 0.08);
+  color: #3b82f6;
 }
 
 .step-action .step-tag {
@@ -457,7 +460,7 @@ const formatJson = (val) => {
   color: var(--text-primary);
   padding: 16px 20px;
   background: var(--accent-bg);
-  border: 1px solid rgba(79, 70, 229, 0.1);
+  border: 1px solid rgba(37, 99, 235, 0.1);
   border-radius: 10px;
   border-left: 3px solid var(--accent);
 }
