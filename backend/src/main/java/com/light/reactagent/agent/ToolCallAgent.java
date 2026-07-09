@@ -138,7 +138,7 @@ public class ToolCallAgent extends ReActAgent {
             return "工具 " + toolName + "：执行完成";
         }
         return switch (toolName) {
-            case "searchWeb" -> "🔍 搜索完成";
+            case "searchWeb" -> "🔍 搜索结果：\n" + rawData;
             case "scrapeWebPage" -> {
                 int len = rawData.length();
                 yield len > 300 ? "🌐 网页抓取完成（" + len + " 字符）" : "🌐 网页内容：\n" + rawData;

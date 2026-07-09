@@ -1,0 +1,6 @@
+# 统一 YAML 换行符为 LF。
+# Windows 上 Git 默认 core.autocrlf=true，会在 checkout 时将 LF 转 CRLF，
+# 导致 application.yml 等配置文件在跨平台协作时出现 "LF will be replaced by CRLF" 警告，
+# 极端情况下破坏缩进。显式声明 eol=lf 可彻底规避（#8）。
+*.yml text eol=lf
+*.yaml text eol=lf

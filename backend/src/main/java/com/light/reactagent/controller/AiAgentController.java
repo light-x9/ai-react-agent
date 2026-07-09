@@ -82,6 +82,11 @@ public class AiAgentController {
         };
 
         try {
+            // 如果前端没传 chatId，自动生成一个 UUID 确保文件注册和下载可追踪
+            String chatId = request.chatId();
+            if (chatId == null || chatId.isBlank()) {
+                chatId = java.util.UUID.randomUUID().toString();
+            }
             String message = request.message();
             String history = request.history();
 
@@ -114,7 +119,7 @@ public class AiAgentController {
             LightManus lightManus = new LightManus(tools, openaiChatModel,
                     true, request.knowledgeBase());
             // 注入 chatId 到 Agent，用于文件归属隔离（前端每次会话生成一个 UUID 作为 chatId）
-            lightManus.setChatId(request.chatId());
+            lightManus.setChatId(chatId);
             lightManus.setOnAgentComplete(releaseOnce);
             return lightManus.runStream(finalPrompt);
         } catch (Exception e) {
