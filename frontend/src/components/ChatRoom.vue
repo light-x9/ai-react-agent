@@ -3,7 +3,8 @@
     <!-- 聊天记录区域 -->
     <div class="chat-messages" ref="messagesContainer">
             <div v-if="!hasUserMessages" class="welcome-panel">
-        <p class="suggestion-label">试试这样开始：</p>
+        <h2 class="welcome-title">今天想完成什么？</h2>
+        <p class="welcome-desc">我可以帮你调研、写作、分析、写代码，甚至把成果直接生成文件。</p>
         <div class="suggestions">
           <button
             v-for="q in suggestedQuestions"
@@ -259,61 +260,34 @@ const toggleCap = (key) => {
 }
 
 /**
- * 题库：覆盖联网搜索 / 知识问答 / 代码生成 / 创意科普，
- * 以及美食、旅行、健康、人际、职场、理财、娱乐、家居等生活化场景。
- * 每次组件挂载时随机抽取 4 条展示。
+ * 题库：任务导向型快捷建议，每次随机抽取 4 条展示。
+ * 覆盖调研、写作、代码、分析、创作、数据处理等核心能力场景。
  */
 const QUESTION_POOL = [
-  // 联网搜索
-  '帮我搜索今天的 AI 新闻',
-  '今天有什么热门科技资讯',
-  '最近比特币价格怎么样',
-  '今天北京的天气如何',
-  // 知识问答
+  // 调研 / 分析
+  '整理一份竞品调研并导出表格',
+  '帮我分析这段代码的错误',
+  '搜索今天的 AI 领域热点新闻',
+  '对比 Vue 3 和 React 的核心差异',
+  // 写作 / 创作
+  '帮我写一篇小红书文案',
+  '写一份周报，涵盖本周主要进展',
+  '帮我写一封正式的商务邮件',
+  '生成项目 README 并下载',
+  // 代码 / 开发
+  '用 Python 实现一个爬虫脚本',
+  '帮我写一个 Docker Compose 配置',
+  '实现一个防抖函数（JavaScript）',
+  '帮我设计一套 RESTful API 接口',
+  // 数据 / 表格
+  '把这份 JSON 数据转成 Excel 表格',
+  '帮我整理这份文档的重点摘要',
+  '生成一份年度数据统计报告',
+  // 生活 / 其他
+  '规划一个杭州三日游路线',
+  '推荐几本适合入门的编程书',
   '解释一下什么是 MCP 协议',
-  '什么是大语言模型的幻觉问题',
-  '解释一下量子计算的基本原理',
-  '区块链的工作原理是什么',
-  // 代码生成
-  '用 JavaScript 实现一个防抖函数',
-  '帮我写一个 Python 爬虫',
-  '写一个 Docker Compose 配置',
-  '帮我写一个 Vue 3 组件示例',
-  // 美食 / 烹饪
-  '周末想做红烧肉，给我一个家常做法',
-  '用空气炸锅做鸡翅怎么做',
-  '减脂期一周三餐怎么安排比较合理',
-  // 旅行 / 出行
-  '帮我规划一个杭州三日游路线',
-  '带父母出游，哪些城市轻松又适合老人',
-  '第一次去日本自由行要注意什么',
-  // 健康 / 健身
-  '久坐腰酸有什么缓解动作',
-  '跑步新手如何避免受伤',
-  '睡前总是刷手机，怎么改善睡眠',
-  // 人际 / 情感
-  '怎么委婉地拒绝同事的不合理请求',
-  '和朋友闹矛盾了，该不该主动联系',
-  '怎么和性格强势的家人好好沟通',
-  // 职场 / 自我提升
-  '如何写一份让 HR 眼前一亮的简历',
-  '开会发言紧张，有什么克服方法',
-  '怎么向上司争取合理的涨薪',
-  // 理财 / 消费
-  '月薪一万，新手怎么开始理财',
-  '基金和股票的核心区别是什么',
-  '买笔记本怎么看配置不踩坑',
-  // 娱乐 / 阅读
-  '最近有什么高分悬疑剧推荐',
-  '适合通勤听的有声书推荐',
-  '周末宅家能做哪些不费钱的小事',
-  // 家居 / 生活
-  '小户型怎么收纳更省空间',
-  '新家除甲醛有哪些实用方法',
-  // 创意 / 写作
-  '帮我写一首关于 AI 的诗',
-  '帮我写一段给朋友的生日祝福语',
-  'React 和 Vue 有哪些主要区别',
+  '月薪一万怎么开始学理财',
 ]
 
 const suggestedQuestions = ref([])
@@ -487,46 +461,65 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 14px;
-  padding: 24px 16px;
+  gap: 16px;
+  padding: 48px 24px 32px;
   margin: auto;
   animation: fadeUp 0.5s ease-out;
+  max-width: 640px;
 }
 
-/* ---------- 建议提问 ---------- */
-.suggestion-label {
+.welcome-title {
   font-family: var(--font-body);
-  font-size: 0.8125rem;
-  color: var(--text-tertiary);
-  margin-top: 4px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.02em;
+  text-align: center;
 }
 
+.welcome-desc {
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  color: var(--text-tertiary);
+  margin: 0;
+  text-align: center;
+  line-height: 1.6;
+  max-width: 480px;
+}
+
+/* ---------- 建议提问卡片 ---------- */
 .suggestions {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   max-width: 600px;
+  width: 100%;
 }
 
 .suggestion-chip {
   font-family: var(--font-body);
-  font-size: 0.8125rem;
-  padding: 8px 16px;
-  border-radius: 100px;
+  font-size: 0.875rem;
+  padding: 10px 20px;
+  border-radius: 12px;
   background: var(--bg-elevated);
   color: var(--text-secondary);
   border: 1px solid var(--border-subtle);
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+  transition: background 0.2s, border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+  line-height: 1.4;
+  text-align: center;
+  min-width: 140px;
+  max-width: 280px;
 }
 
 .suggestion-chip:hover {
-  background: var(--bg-elevated);
-  border-color: var(--border-active);
+  background: #f0f4ff;
+  border-color: rgba(37, 99, 235, 0.3);
   color: var(--accent);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
 }
 
 .suggestion-chip:active {
