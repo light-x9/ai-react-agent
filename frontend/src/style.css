@@ -18,16 +18,87 @@
   --bg-base: #f7f8fa;
   --bg-elevated: #ffffff;
   --bg-card: #ffffff;
-  --border-subtle: rgba(0, 0, 0, 0.06);
-  --border-active: rgba(79, 70, 229, 0.5);
+  --border-subtle: rgba(17, 24, 39, 0.08);
+  --border-active: rgba(37, 99, 235, 0.5);
 
-  --text-primary: #1a1d2e;
+  --text-primary: #1f2937;
   --text-secondary: #5a6072;
-  --text-tertiary: #9ca3af;
+  --text-tertiary: #6b7280;
 
-  --accent: #4f46e5;
-  --accent-soft: rgba(79, 70, 229, 0.06);
-  --accent-bg: rgba(79, 70, 229, 0.04);
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-active: #1e40af;
+  --accent-soft: rgba(37, 99, 235, 0.08);
+  --accent-bg: rgba(37, 99, 235, 0.04);
+  --surface-raised: #ffffff;
+
+  /* 语义能力色 */
+  --color-websearch: #2563eb;
+  --color-websearch-soft: rgba(37, 99, 235, 0.10);
+  --color-knowledge: #0891b2;
+  --color-knowledge-soft: rgba(8, 145, 178, 0.10);
+  --color-both: #7c3aed;
+  --color-both-soft: rgba(124, 58, 237, 0.10);
+
+  /* 状态色 */
+  --color-success: #059669;
+  --color-success-soft: rgba(5, 150, 105, 0.10);
+  --color-success-bg: #ecfdf5;
+  --color-warning: #d97706;
+  --color-warning-soft: rgba(217, 119, 6, 0.10);
+  --color-error: #dc2626;
+  --color-error-soft: rgba(220, 38, 38, 0.08);
+  --color-error-bg: #fef2f2;
+
+  /* 中性灰阶 */
+  --gray-50: #f9fafb;
+  --gray-100: #f3f4f6;
+  --gray-200: #e5e7eb;
+  --gray-300: #d1d5db;
+  --gray-400: #9ca3af;
+  --gray-500: #6b7280;
+  --gray-600: #4b5563;
+  --gray-700: #374151;
+  --gray-900: #111827;
+
+  /* 圆角尺度 */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* 间距尺度（4px 基线） */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* 字号尺度 */
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-base: 14px;
+  --fs-md: 15px;
+  --fs-lg: 16px;
+  --fs-xl: 18px;
+  --fs-2xl: 20px;
+  --fs-3xl: 24px;
+  --fs-4xl: 30px;
+  --fs-5xl: 36px;
+
+  /* 阴影：3 档软阴影 */
+  --shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.04), 0 1px 3px rgba(17, 24, 39, 0.06);
+  --shadow-md: 0 4px 12px rgba(17, 24, 39, 0.06), 0 2px 4px rgba(17, 24, 39, 0.04);
+  --shadow-lg: 0 12px 32px rgba(17, 24, 39, 0.12);
+
+  /* 动效 */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 150ms;
+  --dur-normal: 250ms;
 
   color-scheme: light;
   color: var(--text-primary);
@@ -38,6 +109,73 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============ 深色模式令牌 ============ */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-base: #0f1117;
+  --bg-elevated: #161a22;
+  --bg-card: #1a1f29;
+  --surface-raised: #1f2530;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-active: rgba(59, 130, 246, 0.6);
+
+  --text-primary: #f4f6fb;
+  --text-secondary: #aeb6c4;
+  --text-tertiary: #9aa3b3;
+
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-active: #93c5fd;
+  --accent-soft: rgba(59, 130, 246, 0.16);
+  --accent-bg: rgba(59, 130, 246, 0.10);
+
+  /* 语义能力色（深色下提亮以保证可读） */
+  --color-websearch: #3b82f6;
+  --color-websearch-soft: rgba(59, 130, 246, 0.18);
+  --color-knowledge: #22d3ee;
+  --color-knowledge-soft: rgba(34, 211, 238, 0.16);
+  --color-both: #a78bfa;
+  --color-both-soft: rgba(167, 139, 250, 0.16);
+
+  /* 状态色 */
+  --color-success: #34d399;
+  --color-success-soft: rgba(52, 211, 153, 0.16);
+  --color-success-bg: rgba(52, 211, 153, 0.12);
+  --color-warning: #fbbf24;
+  --color-warning-soft: rgba(251, 191, 36, 0.16);
+  --color-error: #f87171;
+  --color-error-soft: rgba(248, 113, 113, 0.16);
+  --color-error-bg: rgba(248, 113, 113, 0.12);
+
+  /* 中性灰阶（深色反转：50 最深 → 900 最浅） */
+  --gray-50: #0f1117;
+  --gray-100: #161a22;
+  --gray-200: #1f242e;
+  --gray-300: #2a3038;
+  --gray-400: #3a414c;
+  --gray-500: #5b6470;
+  --gray-600: #7b8390;
+  --gray-700: #9aa3b3;
+  --gray-900: #e5e9f0;
+
+  /* 阴影在深色下更沉 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 *,

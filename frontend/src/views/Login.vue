@@ -132,10 +132,10 @@
       <!-- 切换 -->
       <p class="auth-footer">
         <template v-if="mode === 'login'">
-          还没有账号？<a @click="switchMode('register')">立即注册</a>
+          还没有账号？<button type="button" class="auth-link" @click="switchMode('register')">立即注册</button>
         </template>
         <template v-else>
-          已有账号？<a @click="switchMode('login')">直接登录</a>
+          已有账号？<button type="button" class="auth-link" @click="switchMode('login')">直接登录</button>
         </template>
       </p>
     </div>
@@ -226,7 +226,7 @@ const handleSubmit = async () => {
   padding: 24px;
   overflow: hidden;
   background: var(--bg-base);
-  background-image: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(79,70,229,0.06), transparent 60%);
+  background-image: radial-gradient(ellipse 80% 60% at 50% 0%, rgba(37, 99, 235,0.06), transparent 60%);
 }
 
 /* ---------- 背景光晕 ---------- */
@@ -246,13 +246,13 @@ const handleSubmit = async () => {
 .blob-a {
   width: 420px; height: 420px;
   top: -120px; left: -80px;
-  background: radial-gradient(circle, #6366f1 0%, transparent 70%);
+  background: radial-gradient(circle, #2563eb 0%, transparent 70%);
   animation: drift 20s ease-in-out infinite alternate;
 }
 .blob-b {
   width: 380px; height: 380px;
   bottom: -120px; right: -80px;
-  background: radial-gradient(circle, #a78bfa 0%, transparent 70%);
+  background: radial-gradient(circle, #60a5fa 0%, transparent 70%);
   animation: drift 24s ease-in-out infinite alternate-reverse;
 }
 
@@ -263,7 +263,7 @@ const handleSubmit = async () => {
   width: 100%;
   max-width: 420px;
   padding: 40px 36px 32px;
-  background: white;
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: 20px;
   box-shadow: 0 8px 40px rgba(0,0,0,0.06);
@@ -285,10 +285,10 @@ const handleSubmit = async () => {
   justify-content: center;
   width: 52px; height: 52px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #818cf8, #6366f1);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;
   margin-bottom: 16px;
-  box-shadow: 0 6px 18px rgba(99,102,241,0.32);
+  box-shadow: 0 6px 18px rgba(37, 99, 235,0.32);
 }
 .auth-title {
   font-family: var(--font-display);
@@ -331,7 +331,7 @@ const handleSubmit = async () => {
   left: 4px;
   width: calc(50% - 4px);
   height: calc(100% - 8px);
-  background: white;
+  background: var(--bg-elevated);
   border-radius: 9px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.06);
   transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
@@ -361,7 +361,7 @@ const handleSubmit = async () => {
 }
 .field-control.focused {
   border-color: var(--accent);
-  background: white;
+  background: var(--bg-elevated);
   box-shadow: 0 0 0 4px var(--accent-soft);
 }
 .field-control.has-error {
@@ -422,14 +422,14 @@ const handleSubmit = async () => {
   font-size: 0.9375rem;
   font-weight: 600;
   color: white;
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   border-radius: 12px;
-  box-shadow: 0 6px 18px rgba(79,70,229,0.28);
+  box-shadow: 0 6px 18px rgba(37, 99, 235,0.28);
   transition: all 0.2s;
 }
 .auth-submit:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 10px 26px rgba(79,70,229,0.36);
+  box-shadow: 0 10px 26px rgba(37, 99, 235,0.36);
 }
 .auth-submit:active:not(:disabled) {
   transform: translateY(0);
@@ -456,12 +456,17 @@ const handleSubmit = async () => {
   font-size: 0.8125rem;
   color: var(--text-tertiary);
 }
-.auth-footer a {
+.auth-footer .auth-link {
   color: var(--accent);
   font-weight: 500;
   cursor: pointer;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  padding: 0;
 }
-.auth-footer a:hover {
+.auth-footer .auth-link:hover {
   text-decoration: underline;
 }
 

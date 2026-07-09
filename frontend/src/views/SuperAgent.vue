@@ -1,28 +1,31 @@
 <template>
   <div class="super-agent-container">
     <SessionSidebar ref="sidebarRef" />
+    <!-- 管理知识库 — 页面右上角 -->
+    <button class="header-btn manage-btn" @click="openManageDialog" title="上传 / 管理知识库文档">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="16" y1="13" x2="8" y2="13" />
+        <line x1="16" y1="17" x2="8" y2="17" />
+      </svg>
+      <span>管理知识库</span>
+    </button>
     <div class="main-area">
     <!-- ====== Header ====== -->
     <header class="header">
       <div class="header-left">
         <div class="brand-mark" aria-label="LightManus">
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="11" cy="6" r="3.5" stroke="#6366f1" stroke-width="1.2" fill="none" opacity="0.45" />
-            <circle cx="6" cy="16" r="3.5" stroke="#6366f1" stroke-width="1.2" fill="none" opacity="0.45" />
-            <circle cx="16" cy="16" r="3.5" stroke="#6366f1" stroke-width="1.2" fill="none" opacity="0.45" />
+            <circle cx="11" cy="6" r="3.5" stroke="#2563eb" stroke-width="1.2" fill="none" opacity="0.45" />
+            <circle cx="6" cy="16" r="3.5" stroke="#2563eb" stroke-width="1.2" fill="none" opacity="0.45" />
+            <circle cx="16" cy="16" r="3.5" stroke="#2563eb" stroke-width="1.2" fill="none" opacity="0.45" />
           </svg>
         </div>
+        <span class="brand-word">LightManus</span>
       </div>
-      <div class="header-right">
-        <button class="header-btn" @click="openManageDialog" title="上传 / 管理知识库文档">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="16" y1="13" x2="8" y2="13" />
-            <line x1="16" y1="17" x2="8" y2="17" />
-          </svg>
-          <span>管理知识库</span>
-        </button>
+      <div class="header-center">
+        <span class="title">{{ currentSessionTitle }}</span>
       </div>
     </header>
 
@@ -239,20 +242,16 @@
       </div>
     </div>
     
-    <div class="footer-container">
-      <AppFooter />
-    </div>
     </div><!-- /main-area -->
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@vueuse/head'
 import { useChatStore } from '@/stores/chatStore'
 import ChatRoom from '../components/ChatRoom.vue'
-import AppFooter from '../components/AppFooter.vue'
 import SessionSidebar from '../components/SessionSidebar.vue'
 import { chatWithManus, uploadKnowledgeBase, listKnowledgeFiles, deleteKnowledgeFile, batchDeleteKnowledgeFiles, previewKnowledgeFile, searchTestKnowledge, getUsageToday } from '../api'
 import { connectSSE } from '../api'
@@ -268,6 +267,7 @@ useHead({
 
 const router = useRouter()
 const chatStore = useChatStore()
+const currentSessionTitle = computed(() => chatStore.currentSession?.title || '')
 const sidebarRef = ref(null)
 const connectionStatus = ref('disconnected')
 // 能力开关状态（由 ChatRoom toggle 上报）
@@ -721,7 +721,10 @@ const sendMessage = async (message) => {
   chatStore.addMessageToActive('思考中…', false, '', {
     reactCycles: [],
     finalAnswer: '',
-    _cycleIndex: 0
+    _cycleIndex: 0,
+    steps: [],       // 推理步骤序列 [{thought, tool, observation}]
+    thinking: false, // 是否正在推理中
+    collapsed: false  // 推理过程是否已折叠（final 到达后设为 true）
   })
 
   connectionStatus.value = 'connecting'
@@ -741,29 +744,64 @@ const sendMessage = async (message) => {
       const lockedSessionId = chatStore.activeId
 
       /**
-       * 处理后端发来的结构化 SSE 事件（主流简洁风格：不展示推演步骤，只展示最终回答）
-       * 后端仍发送 thought/action/observation 事件供内部使用（如日志、未来扩展），
-       * 但前端仅消费 final 事件，保持对话界面干净。
+       * 处理后端发来的结构化 SSE 事件。
+       * 实时展示推理过程（思考→调工具→观察结果），final 到达后折叠为一行。
        */
+      let currentStep = null
       const handleStructuredEvent = (event) => {
         const msg = chatStore.activeMessages[aiMessageIndex]
         if (!msg) return
         switch (event.type) {
+          case 'thought':
+            // 新一步开始：保存上一步，创建新 step
+            if (currentStep && (currentStep.thought || currentStep.tool)) {
+              msg.steps.push(currentStep)
+            }
+            currentStep = { thought: event.content || '', tool: '', observation: '' }
+            msg.thinking = true
+            break
+          case 'action':
+            if (!currentStep) {
+              currentStep = { thought: '', tool: '', observation: '' }
+            }
+            currentStep.tool = event.tool || ''
+            msg.thinking = true
+            break
+          case 'observation':
+            if (!currentStep) {
+              currentStep = { thought: '', tool: '', observation: '' }
+            }
+            currentStep.observation = event.summary || ''
+            msg.thinking = true
+            break
           case 'final':
+            // 保存最后一步
+            if (currentStep && (currentStep.thought || currentStep.tool)) {
+              msg.steps.push(currentStep)
+            }
+            currentStep = null
             msg.content = event.content || ''
+            msg.thinking = false
+            msg.collapsed = true   // 回答完成后默认折叠推理过程
             // 附带的文件列表（后端文件工具生成后通过 final 事件返回）
             if (event.files && event.files.length > 0) {
               msg.files = event.files
             }
             break
           case 'error':
+            if (currentStep && (currentStep.thought || currentStep.tool)) {
+              msg.steps.push(currentStep)
+            }
+            currentStep = null
             msg.content = '错误：' + (event.content || '未知错误')
+            msg.thinking = false
             break
-          // thought / action / observation 不展示，维持主流流式对话风格
         }
       }
 
-      eventSource = connectSSE('/ai/manus/chat', { message, history: historyText, webSearch: activeCaps.value.webSearch, knowledgeBase: activeCaps.value.knowledgeBase },
+      // 关键修复：把本会话 chatId 一并发给后端，否则后端会用自动生成的 UUID 注册文件，
+      // 导致前端下载时用的 chatId 与注册时的不一致 → 下载接口 404。
+      eventSource = connectSSE('/ai/manus/chat', { message, history: historyText, webSearch: activeCaps.value.webSearch, knowledgeBase: activeCaps.value.knowledgeBase, chatId },
       // onMessage：解析结构化 JSON / 纯文本 / [DONE]
       async (data) => {
         if (data === '[DONE]') {
@@ -858,7 +896,7 @@ function detectIntent(msg) {
 
 // 工具配色（与前端展示对应）
 const TOOL_STYLE = {
-  searchWeb:    { label: '网页搜索',  tool: 'searchWeb',    color: '#4f46e5' },
+  searchWeb:    { label: '网页搜索',  tool: 'searchWeb',    color: '#2563eb' },
   searchKnowledge: { label: '知识库检索', tool: 'searchKnowledge', color: '#0891b2' },
   executeCode:  { label: '代码执行',  tool: 'executeCode',  color: '#ca8a04' },
   readFile:     { label: '文件读取',  tool: 'readFile',     color: '#059669' },
@@ -1151,6 +1189,7 @@ onBeforeUnmount(() => {
   flex-direction: row;
   min-height: 100vh;
   background: var(--bg-base);
+  position: relative;
 }
 
 .main-area {
@@ -1164,9 +1203,9 @@ onBeforeUnmount(() => {
 
 /* === Header === */
 .header {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   padding: 14px 24px;
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border-subtle);
@@ -1174,6 +1213,32 @@ onBeforeUnmount(() => {
   position: sticky;
   top: 0;
   z-index: 10;
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-self: start;
+}
+.brand-word {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+.header-center {
+  justify-self: center;
+  min-width: 0;
+  max-width: 60%;
+}
+.header-center .title {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .back-button {
@@ -1224,7 +1289,7 @@ onBeforeUnmount(() => {
   width: 28px; height: 28px;
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%;
-  background: linear-gradient(135deg, #818cf8, #6366f1);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   color: white;
   font-size: 0.75rem;
   font-weight: 600;
@@ -1260,10 +1325,18 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 .header-btn:hover {
-  background: white;
+  background: var(--bg-elevated);
   color: var(--accent);
   border-color: var(--border-active);
-  box-shadow: 0 2px 8px rgba(79,70,229,0.08);
+  box-shadow: 0 2px 8px rgba(37, 99, 235,0.08);
+}
+
+/* 管理知识库 — 页面右上角浮标 */
+.manage-btn {
+  position: absolute;
+  top: 14px;
+  right: 24px;
+  z-index: 20;
 }
 
 .spinner {
@@ -1285,7 +1358,7 @@ onBeforeUnmount(() => {
   font-size: 0.875rem;
   z-index: 100;
   max-width: 400px;
-  background: white;
+  background: var(--bg-elevated);
   color: var(--text-primary);
   border: 1px solid var(--border-subtle);
   box-shadow: 0 4px 16px rgba(0,0,0,0.08);
@@ -1313,7 +1386,7 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(4px);
 }
 .modal-dialog {
-  background: white;
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: 16px;
   width: 90%;
@@ -1415,7 +1488,7 @@ onBeforeUnmount(() => {
 }
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #818cf8, #4f46e5);
+  background: linear-gradient(90deg, #3b82f6, #2563eb);
   border-radius: 3px;
   transition: width 0.2s;
 }
@@ -1540,7 +1613,7 @@ onBeforeUnmount(() => {
   padding: 4px 12px;
   border-radius: 6px;
   border: 1px solid var(--border-subtle);
-  background: white;
+  background: var(--bg-elevated);
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
@@ -1564,9 +1637,9 @@ onBeforeUnmount(() => {
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 .file-row:hover {
-  background: white;
+  background: var(--bg-elevated);
   border-color: var(--border-active);
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.06);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.06);
 }
 .file-row-selected { background: var(--accent-bg); border-color: var(--border-active); }
 .file-checkbox { accent-color: var(--accent); flex-shrink: 0; }
@@ -1625,7 +1698,7 @@ onBeforeUnmount(() => {
   transition: all 0.15s;
 }
 .file-action-btn:hover {
-  background: white;
+  background: var(--bg-elevated);
   border-color: var(--border-subtle);
   color: var(--accent);
 }
@@ -1679,13 +1752,13 @@ onBeforeUnmount(() => {
   outline: none;
   transition: border-color 0.2s;
 }
-.search-test-input:focus { border-color: var(--accent); background: white; }
+.search-test-input:focus { border-color: var(--accent); background: var(--bg-elevated); }
 .search-test-select {
   padding: 7px 10px;
   border-radius: 8px;
   border: 1px solid var(--border-subtle);
   font-size: 0.8125rem;
-  background: white;
+  background: var(--bg-elevated);
   color: var(--text-primary);
   outline: none;
   max-width: 140px;
@@ -1783,7 +1856,7 @@ onBeforeUnmount(() => {
   padding: 4px 12px;
   border: 1px solid #f59e0b;
   border-radius: 6px;
-  background: white;
+  background: var(--bg-elevated);
   color: #b45309;
   font-size: 0.75rem;
   font-weight: 500;
@@ -1791,7 +1864,7 @@ onBeforeUnmount(() => {
   transition: background 0.2s;
   flex-shrink: 0;
 }
-.cap-hint-btn:hover { background: #fffbeb; }
+.cap-hint-btn:hover { background: rgba(180, 83, 9, 0.12); }
 .cap-hint-close {
   display: flex;
   align-items: center;
@@ -1824,7 +1897,7 @@ onBeforeUnmount(() => {
   border: none;
   transition: background 0.2s;
 }
-.modal-btn:hover { background: #4f46e5; }
+.modal-btn:hover { background: #2563eb; }
 .modal-btn-cancel {
   background: var(--bg-base);
   color: var(--text-secondary);
@@ -1842,25 +1915,25 @@ onBeforeUnmount(() => {
 .modal-enter-from, .modal-leave-to { opacity: 0; }
 
 /* === Chat === */
-.content-wrapper { display: flex; flex-direction: column; flex: 1; }
+.content-wrapper { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
 .chat-area {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   padding: 16px;
   overflow: hidden;
-  min-height: calc(100vh - 56px - 180px);
-  margin-bottom: 16px;
 }
-.footer-container { margin-top: auto; }
 
 @media (max-width: 768px) {
   .header { padding: 12px 16px; }
   .title { font-size: 0.9375rem; }
-  .chat-area { padding: 12px; min-height: calc(100vh - 48px - 160px); margin-bottom: 12px; }
+  .chat-area { padding: 12px; }
 }
 @media (max-width: 480px) {
   .header { padding: 10px 12px; }
   .title { font-size: 0.875rem; }
-  .chat-area { padding: 8px; min-height: calc(100vh - 42px - 150px); margin-bottom: 8px; }
+  .chat-area { padding: 8px; }
 }
 
 /* === Quota Toast === */

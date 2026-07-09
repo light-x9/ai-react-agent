@@ -183,6 +183,9 @@ export const useChatStore = defineStore('chat', {
         reactCycles: extra.reactCycles || [],
         finalAnswer: extra.finalAnswer || '',
         _cycleIndex: extra._cycleIndex || 0,
+        steps: extra.steps || [],
+        thinking: extra.thinking || false,
+        collapsed: extra.collapsed || false,
       })
       session.updatedAt = Date.now()
     },

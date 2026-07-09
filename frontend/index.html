@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b0d17" />
+    <meta name="theme-color" content="#2563eb" />
     <meta name="description" content="AI 超级智能体应用平台，提供 AI 对话、知识库、工具调用等一站式智能体服务" />
     <meta name="keywords" content="AI智能体,AI助手,智能对话,ReAct,MCP,RAG,知识库" />
     <meta name="author" content="鱼皮" />
@@ -22,6 +22,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <!-- 主题预热：在首屏绘制前根据 localStorage 应用深色/浅色，避免闪烁 -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('lightmanus-theme');
+          if (t === 'dark' || t === 'light') {
+            document.documentElement.setAttribute('data-theme', t);
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

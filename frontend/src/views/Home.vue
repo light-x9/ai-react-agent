@@ -13,9 +13,9 @@
         <svg viewBox="0 0 200 80" fill="none" xmlns="http://www.w3.org/2000/svg" class="loop-svg">
           <defs>
             <linearGradient id="loop-grad" x1="0" y1="0" x2="200" y2="0" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stop-color="#818cf8" />
-              <stop offset="50%" stop-color="#6366f1" />
-              <stop offset="100%" stop-color="#a78bfa" />
+              <stop offset="0%" stop-color="#3b82f6" />
+              <stop offset="50%" stop-color="#2563eb" />
+              <stop offset="100%" stop-color="#60a5fa" />
             </linearGradient>
           </defs>
           <!-- 三个相交圆环，表示 ReAct 循环 -->
@@ -23,13 +23,13 @@
           <circle cx="100" cy="40" r="28" stroke="url(#loop-grad)" stroke-width="2.5" stroke-dasharray="6 4" opacity="0.7" />
           <circle cx="150" cy="40" r="28" stroke="url(#loop-grad)" stroke-width="2.5" stroke-dasharray="6 4" opacity="0.7" />
           <!-- 中心图标 -->
-          <text x="50" y="45" text-anchor="middle" fill="#6366f1" font-size="16" font-family="Inter, sans-serif" font-weight="600">T</text>
-          <text x="100" y="45" text-anchor="middle" fill="#6366f1" font-size="16" font-family="Inter, sans-serif" font-weight="600">A</text>
-          <text x="150" y="45" text-anchor="middle" fill="#6366f1" font-size="16" font-family="Inter, sans-serif" font-weight="600">O</text>
+          <text x="50" y="45" text-anchor="middle" fill="#2563eb" font-size="16" font-family="Inter, sans-serif" font-weight="600">T</text>
+          <text x="100" y="45" text-anchor="middle" fill="#2563eb" font-size="16" font-family="Inter, sans-serif" font-weight="600">A</text>
+          <text x="150" y="45" text-anchor="middle" fill="#2563eb" font-size="16" font-family="Inter, sans-serif" font-weight="600">O</text>
           <!-- 连接线 -->
-          <path d="M78 40 H122" stroke="#6366f1" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.5" />
-          <path d="M85 32 C90 20, 110 20, 115 32" stroke="#6366f1" stroke-width="1" fill="none" opacity="0.3" />
-          <path d="M85 48 C90 60, 110 60, 115 48" stroke="#6366f1" stroke-width="1" fill="none" opacity="0.3" />
+          <path d="M78 40 H122" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.5" />
+          <path d="M85 32 C90 20, 110 20, 115 32" stroke="#2563eb" stroke-width="1" fill="none" opacity="0.3" />
+          <path d="M85 48 C90 60, 110 60, 115 48" stroke="#2563eb" stroke-width="1" fill="none" opacity="0.3" />
         </svg>
       </div>
 
@@ -151,7 +151,7 @@ const goSuperAgent = () => router.push(userStore.isLoggedIn ? '/super-agent' : '
   overflow: hidden;
   background: var(--bg-base);
   background-image:
-    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(79,70,229,0.06), transparent 60%);
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(37, 99, 235,0.06), transparent 60%);
 }
 
 /* ---------- 背景光晕 ---------- */
@@ -171,13 +171,13 @@ const goSuperAgent = () => router.push(userStore.isLoggedIn ? '/super-agent' : '
 .blob-a {
   width: 480px; height: 480px;
   top: -120px; left: -80px;
-  background: radial-gradient(circle, #6366f1 0%, transparent 70%);
+  background: radial-gradient(circle, #2563eb 0%, transparent 70%);
   animation: drift 20s ease-in-out infinite alternate;
 }
 .blob-b {
   width: 400px; height: 400px;
   bottom: -100px; right: -60px;
-  background: radial-gradient(circle, #a78bfa 0%, transparent 70%);
+  background: radial-gradient(circle, #60a5fa 0%, transparent 70%);
   animation: drift 24s ease-in-out infinite alternate-reverse;
 }
 
@@ -210,7 +210,7 @@ const goSuperAgent = () => router.push(userStore.isLoggedIn ? '/super-agent' : '
 }
 
 .hero-title-accent {
-  background: linear-gradient(135deg, #818cf8, #6366f1 60%, #a78bfa);
+  background: linear-gradient(135deg, #3b82f6, #2563eb 60%, #60a5fa);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -241,7 +241,7 @@ const goSuperAgent = () => router.push(userStore.isLoggedIn ? '/super-agent' : '
   font-weight: 500;
   padding: 6px 16px;
   border-radius: 100px;
-  background: white;
+  background: var(--bg-elevated);
   color: var(--accent);
   border: 1px solid var(--border-subtle);
   box-shadow: 0 1px 3px rgba(0,0,0,0.04);
@@ -262,7 +262,7 @@ const goSuperAgent = () => router.push(userStore.isLoggedIn ? '/super-agent' : '
 .feature {
   padding: 28px 24px;
   border-radius: 16px;
-  background: white;
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   box-shadow: 0 2px 12px rgba(0,0,0,0.04);
   transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
@@ -270,7 +270,7 @@ const goSuperAgent = () => router.push(userStore.isLoggedIn ? '/super-agent' : '
 .feature:hover {
   border-color: var(--border-active);
   transform: translateY(-4px);
-  box-shadow: 0 8px 32px rgba(79,70,229,0.08);
+  box-shadow: 0 8px 32px rgba(37, 99, 235,0.08);
 }
 
 .feature-icon {
@@ -326,7 +326,7 @@ const goSuperAgent = () => router.push(userStore.isLoggedIn ? '/super-agent' : '
   justify-content: space-between;
   padding: 28px 32px;
   border-radius: 20px;
-  background: white;
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
   box-shadow: 0 2px 12px rgba(0,0,0,0.04);
   transition: all 0.25s;
@@ -335,7 +335,7 @@ const goSuperAgent = () => router.push(userStore.isLoggedIn ? '/super-agent' : '
 .cta-card:hover .cta-card-inner {
   border-color: var(--accent);
   transform: translateX(4px);
-  box-shadow: 0 8px 32px rgba(79,70,229,0.12);
+  box-shadow: 0 8px 32px rgba(37, 99, 235,0.12);
 }
 
 .cta-card-shadow {
@@ -345,7 +345,7 @@ const goSuperAgent = () => router.push(userStore.isLoggedIn ? '/super-agent' : '
   z-index: 0;
   opacity: 0;
   transition: opacity 0.4s;
-  box-shadow: 0 8px 40px -8px rgba(79,70,229,0.25);
+  box-shadow: 0 8px 40px -8px rgba(37, 99, 235,0.25);
   pointer-events: none;
 }
 .cta-card:hover .cta-card-shadow { opacity: 1; }

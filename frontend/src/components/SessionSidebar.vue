@@ -9,6 +9,22 @@
         </svg>
         <span>新对话</span>
       </button>
+      <button class="theme-toggle" @click="toggleTheme" :title="isDark ? '切换为浅色' : '切换为深色'" :aria-label="isDark ? '切换为浅色' : '切换为深色'">
+        <svg v-if="!isDark" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+        <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4" />
+          <line x1="12" y1="2" x2="12" y2="5" />
+          <line x1="12" y1="19" x2="12" y2="22" />
+          <line x1="4.22" y1="4.22" x2="6.34" y2="6.34" />
+          <line x1="17.66" y1="17.66" x2="19.78" y2="19.78" />
+          <line x1="2" y1="12" x2="5" y2="12" />
+          <line x1="19" y1="12" x2="22" y2="12" />
+          <line x1="4.22" y1="19.78" x2="6.34" y2="17.66" />
+          <line x1="17.66" y1="6.34" x2="19.78" y2="4.22" />
+        </svg>
+      </button>
     </div>
 
     <!-- 会话列表 -->
@@ -152,6 +168,15 @@ const router = useRouter()
 const chatStore = useChatStore()
 const userStore = useUserStore()
 
+// 深色模式：初始值来自 <html data-theme> 或 localStorage
+const isDark = ref(document.documentElement.getAttribute('data-theme') === 'dark')
+const toggleTheme = () => {
+  isDark.value = !isDark.value
+  const theme = isDark.value ? 'dark' : 'light'
+  document.documentElement.setAttribute('data-theme', theme)
+  localStorage.setItem('lightmanus-theme', theme)
+}
+
 const usage = ref({ chatUsed: 0, chatLimit: 100, searchUsed: 0, searchLimit: 30 })
 const deleteTarget = ref(null)
 // 删除进行中状态：锁住按钮防重复点击
@@ -284,6 +309,28 @@ defineExpose({ refreshUsage })
 .sidebar-header {
   padding: 14px;
   border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  gap: 8px;
+}
+.new-chat-btn {
+  flex: 1;
+}
+.theme-toggle {
+  flex-shrink: 0;
+  width: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  color: var(--text-tertiary);
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  transition: color 0.2s, background 0.2s, border-color 0.2s, transform 0.15s;
+}
+.theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--border-active);
+  transform: translateY(-1px);
 }
 .new-chat-btn {
   width: 100%;
@@ -296,13 +343,13 @@ defineExpose({ refreshUsage })
   font-size: 0.875rem;
   font-weight: 500;
   color: white;
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  box-shadow: 0 2px 8px rgba(79,70,229,0.2);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  box-shadow: 0 2px 8px rgba(37,99,235,0.2);
   transition: all 0.2s;
 }
 .new-chat-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(79,70,229,0.3);
+  box-shadow: 0 4px 14px rgba(37,99,235,0.3);
 }
 
 /* ---------- 会话列表 ---------- */
@@ -362,11 +409,11 @@ defineExpose({ refreshUsage })
   color: var(--text-tertiary);
 }
 .session-item:hover .session-icon-wrap {
-  background: rgba(79,70,229,0.06);
+  background: var(--accent-soft);
   color: var(--text-secondary);
 }
 .session-item.active .session-icon-wrap {
-  background: rgba(79,70,229,0.12);
+  background: rgba(37,99,235,0.12);
   color: var(--accent);
 }
 /* 网页搜索：蓝色调 */
@@ -404,10 +451,10 @@ defineExpose({ refreshUsage })
   padding: 2px 6px;
   border: 1.5px solid var(--accent);
   border-radius: 6px;
-  background: white;
+  background: var(--bg-elevated);
   color: var(--text-primary);
   outline: none;
-  box-shadow: 0 0 0 3px rgba(79,70,229,0.08);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.08);
 }
 
 /* hover 操作按钮容器 */
@@ -432,7 +479,7 @@ defineExpose({ refreshUsage })
 }
 .session-action-btn:hover {
   color: var(--accent);
-  background: rgba(79,70,229,0.08);
+  background: var(--accent-soft);
 }
 .session-action-btn.session-delete:hover {
   color: #dc2626;
@@ -518,7 +565,7 @@ defineExpose({ refreshUsage })
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: linear-gradient(135deg, #818cf8, #6366f1);
+  background: linear-gradient(135deg, #60a5fa, #2563eb);
   color: white;
   font-size: 0.75rem;
   font-weight: 600;
@@ -564,12 +611,12 @@ defineExpose({ refreshUsage })
   to { opacity: 1; }
 }
 .delete-dialog {
-  background: white;
+  background: var(--bg-card);
   border-radius: 14px;
   padding: 20px;
   width: 90%;
   max-width: 360px;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+  box-shadow: var(--shadow-lg);
   animation: dialogIn 0.2s ease;
 }
 @keyframes dialogIn {
@@ -600,7 +647,7 @@ defineExpose({ refreshUsage })
   color: var(--text-secondary);
   border: 1px solid var(--border-subtle);
 }
-.btn-cancel:hover { background: #e5e7eb; }
+.btn-cancel:hover { background: var(--gray-200); }
 .btn-danger {
   background: #dc2626;
   color: white;
@@ -625,14 +672,14 @@ defineExpose({ refreshUsage })
   animation: toastIn 0.25s ease;
 }
 .action-toast.success {
-  background: #ecfdf5;
-  color: #059669;
-  border: 1px solid #a7f3d0;
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  border: 1px solid rgba(5, 150, 105, 0.25);
 }
 .action-toast.error {
-  background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  border: 1px solid rgba(220, 38, 38, 0.25);
 }
 @keyframes toastIn {
   from { opacity: 0; transform: translateX(-50%) translateY(10px); }
