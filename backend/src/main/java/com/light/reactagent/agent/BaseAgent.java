@@ -52,6 +52,9 @@ public abstract class BaseAgent {
     // Memory 记忆（需要自主维护会话上下文）
     private List<Message> messageList = new ArrayList<>();
 
+    // 本轮最终答案（不含工具推理痕迹），供 Controller 完成后写回 ChatMemory
+    private String finalAnswer;
+
     /**
      * Agent 执行完成时的回调钩子（用于释放并发许可等资源）。
      * 由外部（如 Controller）注入，在 runStream 的 finally 中调用。

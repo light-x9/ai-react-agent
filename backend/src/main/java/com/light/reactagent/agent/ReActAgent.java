@@ -60,6 +60,7 @@ public abstract class ReActAgent extends BaseAgent {
                 setState(AgentState.FINISHED);
                 // 获取 AI 的文字回复作为最终答案
                 String finalText = extractAssistantText();
+                setFinalAnswer(finalText);
                 sb.append("{\"type\":\"final\",\"content\":\"")
                   .append(escapeJson(finalText))
                   .append("\"");
@@ -92,6 +93,7 @@ public abstract class ReActAgent extends BaseAgent {
             //    （LLM 调用 doTerminate 结束时，其文字回答即为最终答案）
             if (getState() == AgentState.FINISHED) {
                 String finalText = extractAssistantText();
+                setFinalAnswer(finalText);
                 sb.append("\n{\"type\":\"final\",\"content\":\"")
                   .append(escapeJson(finalText))
                   .append("\"");
