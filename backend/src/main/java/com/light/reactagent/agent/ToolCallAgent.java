@@ -33,6 +33,12 @@ public class ToolCallAgent extends ReActAgent {
     private final ToolCallingManager toolCallingManager;
     private final ChatOptions chatOptions;
 
+    /**
+     * 单条工具返回内容截断上限（字符）。工具（如网页抓取）可能返回数万字原文，
+     * 若不截断会被 Agent 每一步重发给 LLM，在长任务里随步数快速累积导致 token 超限 / 延迟飙升。
+     */
+    private static final int MAX_TOOL_RESPONSE_CHARS = 4000;
+
     // 当前步骤的思考内容与工具调用（供 step() 构建结构化 SSE 输出）
     private String currentThought;
     private List<Map<String, String>> currentToolCalls;
@@ -113,6 +119,8 @@ public class ToolCallAgent extends ReActAgent {
         Prompt prompt = new Prompt(getMessageList(), this.chatOptions);
         ToolExecutionResult toolExecutionResult = toolCallingManager.executeToolCalls(prompt, toolCallChatResponse);
         setMessageList(toolExecutionResult.conversationHistory());
+        // 截断工具返回的超长内容，避免单轮 Agent 任务内 token 随步数累积膨胀
+        truncateToolResponses();
         ToolResponseMessage toolResponseMessage = (ToolResponseMessage) CollUtil.getLast(toolExecutionResult.conversationHistory());
         boolean terminateToolCalled = toolResponseMessage.getResponses().stream()
                 .anyMatch(response -> response.name().equals("doTerminate"));
@@ -131,6 +139,31 @@ public class ToolCallAgent extends ReActAgent {
         }
         log.info(results);
         return results;
+    }
+
+    /**
+     * 截断 messageList 中 ToolResponseMessage 的超长返回内容。
+     * 仅影响喂给模型的内容，不影响返回给前端的展示文本（展示走 formatToolResultForDisplay，已单独处理）。
+     */
+    private void truncateToolResponses() {
+        List<Message> messages = getMessageList();
+        for (int i = 0; i < messages.size(); i++) {
+            Message m = messages.get(i);
+            if (m instanceof ToolResponseMessage trm) {
+                List<ToolResponseMessage.ToolResponse> truncated = trm.getResponses().stream()
+                        .map(r -> {
+                            String data = r.responseData();
+                            if (data != null && data.length() > MAX_TOOL_RESPONSE_CHARS) {
+                                return new ToolResponseMessage.ToolResponse(
+                                        r.id(), r.name(),
+                                        data.substring(0, MAX_TOOL_RESPONSE_CHARS) + "\n...[工具返回内容过长已截断]");
+                            }
+                            return r;
+                        })
+                        .collect(Collectors.toList());
+                messages.set(i, new ToolResponseMessage(truncated));
+            }
+        }
     }
 
     private String formatToolResultForDisplay(String toolName, String rawData) {

@@ -1,5 +1,6 @@
 package com.light.reactagent.tools;
 
+import cn.hutool.http.HttpResponse;
 import cn.hutool.http.HttpUtil;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
@@ -63,6 +64,11 @@ public class WebSearchTool {
             return "今日联网搜索已达上限，请明日再试，或改用知识库回答。";
         }
 
+        // 提前校验：API Key 缺失时立即给出明确提示，避免静默失败（曾因空 key 被误判为"搜不到"）
+        if (apiKey == null || apiKey.isBlank()) {
+            return "搜索功能未配置：后端 SERPER_API_KEY 环境变量未设置，请参考 application-local.yml 说明配置后重启后端。";
+        }
+
         try {
             // 构造 Serper POST 请求（JSON body + X-API-KEY header）
             JSONObject requestBody = JSONUtil.createObj();
@@ -75,15 +81,20 @@ public class WebSearchTool {
             headers.put("X-API-KEY", apiKey);
             headers.put("Content-Type", "application/json");
 
-            String response = HttpUtil.createPost(SERPER_API_URL)
+            // 使用 HttpResponse 以便检查 HTTP 状态码（Serper 对无效/未授权 Key 返回 403，而非空结果）
+            HttpResponse response = HttpUtil.createPost(SERPER_API_URL)
                     .addHeaders(headers)
                     .body(requestBody.toString())
                     .timeout(SERPER_TIMEOUT_MS)
-                    .execute()
-                    .body();
+                    .execute();
+            int status = response.getStatus();
+            String body = response.body();
+            if (status != 200) {
+                return "搜索服务调用失败（HTTP " + status + "）：SERPER_API_KEY 可能无效或未授权，请检查后端配置后重启。";
+            }
 
             // 解析 Serper 返回的 organic 结果
-            JSONObject jsonObject = JSONUtil.parseObj(response);
+            JSONObject jsonObject = JSONUtil.parseObj(body);
             JSONArray organicResults = jsonObject.getJSONArray("organic");
             if (organicResults == null || organicResults.isEmpty()) {
                 return "未搜索到相关结果";
