@@ -37,6 +37,7 @@
 - **ReAct 推理循环** — Thought -> Action -> Observation 多步推理链路，工具调用与思考交替进行
 - **多工具协同** — 8 个本地工具 + MCP 协议扩展（图片搜索、高德地图），支持能力开关按需装配
 - **RAG 知识库** — 基于 PGvector 的向量检索，支持文档上传、预览、批量删除与语义搜索
+- **对话附件分析** — 对话中随时上传 PDF / DOCX / XLSX 等文件，AI 直接按原文回答（一次性，非知识库）
 - **流式响应** — 基于 SSE（Server-Sent Events）实时推送推理步骤，15s 心跳防超时
 - **MCP 协议支持** — 通过 Model Context Protocol 接入外部工具，失败自动降级为纯本地工具
 - **用户认证** — JWT + Spring Security 无状态认证，BCrypt 密码加密
@@ -119,7 +120,7 @@ BaseAgent -> ReActAgent -> ToolCallAgent -> LightManus
 | 前端 | Vue 3, Vite 4, Vue Router 4, Pinia 3 |
 | 状态持久化 | pinia-plugin-persistedstate (localStorage) |
 | HTTP | Axios, fetch + ReadableStream (SSE) |
-| 工具库 | Hutool, Jsoup, iText, Kryo |
+| 工具库 | Hutool, Jsoup, iText, Kryo, PDFBox (PDF), Apache POI (DOCX/XLSX/PPTX) |
 | 文档 | Knife4j (Swagger UI，生产环境关闭) |
 
 ---

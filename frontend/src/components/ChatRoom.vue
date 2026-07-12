@@ -157,22 +157,62 @@
         <span v-if="activeCaps.webSearch || activeCaps.knowledgeBase" class="cap-hint">已开启能力，再次点击关闭</span>
       </div>
 
-      <div class="chat-input">
+      <!-- 附件 chip（有附件时显示在输入框上方） -->
+      <transition name="fade">
+        <div v-if="attachmentFile" class="attachment-chip">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+          <span class="attachment-name" :title="attachmentFile.name + ' (' + formatFileSize(attachmentFile.size) + ')'">
+            {{ attachmentFile.name }}
+          </span>
+          <span class="attachment-size">{{ formatFileSize(attachmentFile.size) }}</span>
+          <button class="attachment-remove" @click="clearAttachment" title="移除附件">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      </transition>
+
+      <!-- 附件解析错误提示 -->
+      <transition name="fade">
+        <div v-if="attachmentError" class="attachment-error">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {{ attachmentError }}
+          <button class="attachment-error-close" @click="attachmentError = ''">×</button>
+        </div>
+      </transition>
+
+      <div class="chat-input" :class="{ 'has-attachment': attachmentFile }">
         <textarea
           ref="inputEl"
           v-model="inputMessage"
           @keydown.enter="handleEnter"
           @input="autoResize"
+          @paste="handlePaste"
           :placeholder="inputPlaceholder"
           class="input-box"
           :disabled="connectionStatus === 'connecting' || quotaReached"
           rows="1"
         ></textarea>
         <button
+          ref="attachBtn"
+          @click="triggerFileInput"
+          class="attach-button"
+          :class="{ active: attachmentFile }"
+          :disabled="connectionStatus === 'connecting' || quotaReached"
+          title="上传文件让 AI 阅读（PDF/DOCX/TXT）"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </button>
+        <button
           @click="sendMessage"
           class="send-button"
           :class="{ active: inputMessage.trim() }"
-          :disabled="connectionStatus === 'connecting' || !inputMessage.trim() || quotaReached"
+          :disabled="connectionStatus === 'connecting' || (!inputMessage.trim() && !attachmentFile) || quotaReached"
           aria-label="发送消息"
         >
           <svg v-if="connectionStatus !== 'connecting'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -182,6 +222,15 @@
           <span v-else class="send-spinner" />
         </button>
       </div>
+
+      <!-- 隐藏的文件选择器 -->
+      <input
+        ref="fileInputEl"
+        type="file"
+        class="file-input-hidden"
+        accept=".pdf,.docx,.xlsx,.pptx,.doc,.xls,.ppt,.txt,.md,.csv,.json"
+        @change="handleFileSelect"
+      />
     </div>
   </div>
 </template>
@@ -226,6 +275,57 @@ const emit = defineEmits(['send-message', 'capability-change'])
 const inputMessage = ref('')
 const messagesContainer = ref(null)
 const inputEl = ref(null)
+const fileInputEl = ref(null)
+
+// 对话附件（一次性的，发出即清空；与知识库持久上传不同）
+const attachmentFile = ref(null)   // File 对象
+const attachmentError = ref('')    // 选择文件时的校验错误（大小、后缀等）
+
+/** 校验并设入附件，失败时写 attachmentError 提示用户 */
+function setAttachment(file) {
+  attachmentError.value = ''
+  const ALLOWED = /\.(pdf|docx|xlsx|pptx|doc|xls|ppt|txt|md|csv|json)$/i
+  const MAX_BYTES = 10 * 1024 * 1024 // 与后端一致 10MB
+  if (!ALLOWED.test(file.name)) {
+    attachmentError.value = '不支持的文件格式：' + file.name
+    return
+  }
+  if (file.size > MAX_BYTES) {
+    attachmentError.value = '文件超过 10MB 限制：' + file.name
+    return
+  }
+  attachmentFile.value = file
+}
+
+function clearAttachment() {
+  attachmentFile.value = null
+  attachmentError.value = ''
+  if (fileInputEl.value) fileInputEl.value.value = ''
+}
+
+function triggerFileInput() {
+  if (fileInputEl.value) fileInputEl.value.click()
+}
+
+function handleFileSelect(e) {
+  const file = e.target.files && e.target.files[0]
+  if (file) setAttachment(file)
+  // 同一文件重复选择时 value 不变导致 onchange 不触发，清空后允许重复选
+  e.target.value = ''
+}
+
+/** 剪贴板粘贴文件（如从截图工具粘贴 PDF/文档） */
+function handlePaste(e) {
+  const items = e.clipboardData && e.clipboardData.items
+  if (!items) return
+  for (const item of items) {
+    if (item.kind === 'file') {
+      e.preventDefault()
+      setAttachment(item.getAsFile())
+      break
+    }
+  }
+}
 
 // 能力开关（toggle，持续生效直到关闭）
 const capabilities = [
@@ -283,6 +383,8 @@ const QUESTION_POOL = [
   '解释一下什么是 MCP 协议',
   '解释一下 RAG 检索增强生成的原理',
   '推荐几本适合入门的编程书',
+  // 对话附件：上传文档 / PDF / Word 让 AI 直接阅读（非知识库，一次性分析）
+  '我想上传一份 PDF 合同，帮我找出关键条款',
   // 生活 / 其他
   '规划一个杭州三日游路线',
   '月薪一万怎么开始学理财',
@@ -310,7 +412,7 @@ const inputPlaceholder = computed(() => {
 })
 
 const handleSuggestionClick = (question) => {
-  emit('send-message', question)
+  emit('send-message', question, null)
 }
 
 // Enter 发送，Shift+Enter 换行
@@ -332,11 +434,15 @@ const autoResize = () => {
 }
 
 const sendMessage = () => {
-  if (!inputMessage.value.trim()) return
-  emit('send-message', inputMessage.value)
+  // 允许「没文字但选了附件」这种情况，自动补一句引导语
+  const text = inputMessage.value.trim()
+  if (!text && !attachmentFile.value) return
+  const finalText = text || '请阅读这个文件并给我一个概述，然后告诉我你想了解什么。'
+  emit('send-message', finalText, attachmentFile.value)
   inputMessage.value = ''
-  // 重置高度
   if (inputEl.value) inputEl.value.style.height = 'auto'
+  // 发送后即清空附件——一次性用途，下一轮需重新选
+  attachmentFile.value = null
 }
 
 const formatTime = (timestamp) => {
@@ -1099,6 +1205,128 @@ onMounted(() => {
   .message-bubble { padding: 10px 14px; }
   .message-content { font-size: 0.8125rem; }
   .welcome-panel { padding: 20px 12px; }
+}
+
+/* ---------- 对话附件 chip ---------- */
+.attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 16px 0;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--accent-bg, rgba(37, 99, 235, 0.06));
+  border: 1px solid rgba(37, 99, 235, 0.18);
+  width: fit-content;
+  max-width: calc(100% - 32px);
+}
+.attachment-chip svg { flex-shrink: 0; color: var(--accent); }
+.attachment-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-size {
+  font-size: 0.6875rem;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.attachment-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.attachment-remove:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+}
+
+/* 附件校验错误 */
+.attachment-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 16px 0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #dc2626;
+  font-size: 0.75rem;
+  width: fit-content;
+  max-width: calc(100% - 32px);
+}
+.attachment-error-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.875rem;
+  margin-left: 4px;
+  padding: 0 2px;
+}
+
+/* 附件按钮（在输入框左侧） */
+.attach-button {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bg-base);
+  color: var(--text-tertiary);
+  border: 1.5px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, transform 0.15s, border-color 0.2s;
+}
+.attach-button:hover:not(:disabled) {
+  background: var(--accent-bg, rgba(37, 99, 235, 0.08));
+  color: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.05);
+}
+.attach-button.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-bg, rgba(37, 99, 235, 0.08));
+}
+.attach-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 隐藏的原生 file input */
+.file-input-hidden {
+  display: none;
+}
+
+/*有附件时输入框容器左侧留白配合 attach 按钮 */
+.chat-input.has-attachment .input-box {
+  background: var(--bg-elevated);
+}
+
+/* 附件 chip 过渡 */
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.2s, transform 0.2s;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
 }
 
 /* ---------- 配额达上限横幅 ---------- */

@@ -45,9 +45,11 @@ export const connectSSE = (url, body, onMessage, onError) => {
   const controller = new AbortController()
   const fullUrl = API_BASE_URL + url
 
-  const headers = {
-    'Content-Type': 'application/json',
-    'Accept': 'text/event-stream'
+  // 自动识别：FormData 时由浏览器设置 Content-Type（含 boundary），其余走 JSON
+  const isMultipart = body instanceof FormData
+  const headers = { 'Accept': 'text/event-stream' }
+  if (!isMultipart) {
+    headers['Content-Type'] = 'application/json'
   }
   const token = getToken()
   if (token) {
@@ -63,7 +65,7 @@ export const connectSSE = (url, body, onMessage, onError) => {
   fetch(fullUrl, {
     method: 'POST',
     headers,
-    body: JSON.stringify(body || {}),
+    body: isMultipart ? body : JSON.stringify(body || {}),
     signal: controller.signal
   }).then(async (response) => {
     if (!response.ok) {

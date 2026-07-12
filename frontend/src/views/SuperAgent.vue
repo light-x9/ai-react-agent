@@ -682,7 +682,7 @@ const closeManageDialog = () => {
  * 接入真实后端时，只需替换 runMockReActStream() 为 connectSSE()，
  * 在 onmessage 中根据 event.data 的 type 字段调用对应函数即可。
  */
-const sendMessage = async (message) => {
+const sendMessage = async (message, attachmentFile = null) => {
   // 无活跃会话时自动创建（首次发消息、或全部会话被删除后）
   if (!chatStore.activeId) {
     const id = await chatStore.createSession()
@@ -703,8 +703,13 @@ const sendMessage = async (message) => {
   // 判断是否是当前会话的首条用户消息（用于设置会话能力类型图标）
   const isActiveSessionEmpty = chatStore.activeMessages.filter(m => m.isUser).length === 0
 
-  chatStore.addMessageToActive(message, true)
-  chatStore.persistMessage('user', message)
+  // 给附件的用户气泡追加一个「📎文件名」小尾巴，让用户一眼看出这条消息带着文件
+  const displayMsg = attachmentFile
+    ? message + '\n\n📎 ' + attachmentFile.name + ' (' + formatFileSize(attachmentFile.size) + ')'
+    : message
+
+  chatStore.addMessageToActive(displayMsg, true)
+  chatStore.persistMessage('user', displayMsg)
 
   // 首条消息发送后，根据当前能力开关设置会话类型
   if (isActiveSessionEmpty) {
@@ -796,7 +801,22 @@ const sendMessage = async (message) => {
 
       // 关键修复：把本会话 chatId 一并发给后端，否则后端会用自动生成的 UUID 注册文件，
       // 导致前端下载时用的 chatId 与注册时的不一致 → 下载接口 404。
-      eventSource = connectSSE('/ai/manus/chat', { message, webSearch: activeCaps.value.webSearch, knowledgeBase: activeCaps.value.knowledgeBase, chatId: chatId.value },
+      // 有附件时走 multipart/form-data：file 单独拆出来作为 file part，其余字段仍为 form field
+      let requestBody
+      if (attachmentFile) {
+        const fd = new FormData()
+        fd.append('message', message)
+        // history 字段不参与对话，后端 ChatMemory 自动管理，无需传
+        fd.append('webSearch', String(activeCaps.value.webSearch))
+        fd.append('knowledgeBase', String(activeCaps.value.knowledgeBase))
+        fd.append('chatId', chatId.value || '')
+        fd.append('file', attachmentFile)
+        requestBody = fd
+      } else {
+        requestBody = { message, webSearch: activeCaps.value.webSearch, knowledgeBase: activeCaps.value.knowledgeBase, chatId: chatId.value }
+      }
+
+      eventSource = connectSSE('/ai/manus/chat', requestBody,
       // onMessage：解析结构化 JSON / 纯文本 / [DONE]
       async (data) => {
         if (data === '[DONE]') {

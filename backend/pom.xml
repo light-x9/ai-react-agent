@@ -29,6 +29,8 @@
         <hutool.version>5.8.37</hutool.version>
         <knife4j.version>4.4.0</knife4j.version>
         <lombok.version>1.18.36</lombok.version>
+        <pdfbox.version>3.0.3</pdfbox.version>
+        <poi.version>5.4.0</poi.version>
         <jsonschema.version>4.38.0</jsonschema.version>
         <jjwt.version>0.12.6</jjwt.version>
     </properties>
@@ -171,6 +173,24 @@
             <groupId>cn.hutool</groupId>
             <artifactId>hutool-all</artifactId>
             <version>${hutool.version}</version>
+        </dependency>
+
+        <!-- PDFBox：对话附件中解析 PDF/DOCX/XLSX/PPTX 等二进制文档为纯文本 -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
+        </dependency>
+        <!-- Apache POI：DOCX/XLSX/PPTX/PPT/DOC 等 Office 二进制格式 -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-scratchpad</artifactId>
+            <version>${poi.version}</version>
         </dependency>
 
         <!-- API Docs -->

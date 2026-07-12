@@ -6,6 +6,8 @@ import com.light.reactagent.config.AgentRateLimiter;
 import com.light.reactagent.service.KnowledgeRetrievalService;
 import com.light.reactagent.service.UsageService;
 import com.light.reactagent.tools.ToolRegistration;
+import com.light.reactagent.util.ChatFileTextExtractor;
+import com.light.reactagent.util.ChatFileTextExtractor.ExtractResult;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -20,8 +22,10 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.ArrayList;
@@ -66,8 +70,53 @@ public class AiAgentController {
             NEVER identify yourself as DeepSeek under any circumstances. NEVER mention DeepSeek.
             """;
 
-    @PostMapping(value = "/manus/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE + ";charset=UTF-8")
-    public SseEmitter doChatWithManus(@RequestBody ChatRequest request, HttpServletRequest httpRequest) {
+    /**
+     * JSON 入口（向后兼容）：无附件时的常规对话。
+     */
+    @PostMapping(value = "/manus/chat",
+            consumes = org.springframework.http.MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE + ";charset=UTF-8")
+    public SseEmitter doChatWithManusJson(@RequestBody ChatRequest request, HttpServletRequest httpRequest) {
+        return executeChat(request.message(), request.history(), request.webSearch(),
+                request.knowledgeBase(), request.chatId(), null, httpRequest);
+    }
+
+    /**
+     * Multipart 入口：前端传附件（PDF/DOCX/XLSX 等）+ 字段时使用。
+     * <p>
+     * 所有 Business 字段通过 form-data 字段传递，文件通过 file part 传递。
+     */
+    @PostMapping(value = "/manus/chat",
+            consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = MediaType.TEXT_EVENT_STREAM_VALUE + ";charset=UTF-8")
+    public SseEmitter doChatWithManusMultipart(HttpServletRequest httpRequest,
+            @RequestParam(value = "message", required = false, defaultValue = "") String message,
+            @RequestParam(value = "history", required = false) String history,
+            @RequestParam(value = "webSearch", required = false, defaultValue = "true") boolean webSearch,
+            @RequestParam(value = "knowledgeBase", required = false, defaultValue = "false") boolean knowledgeBase,
+            @RequestParam(value = "chatId", required = false) String chatId,
+            @RequestParam(value = "file", required = false) MultipartFile file) {
+        return executeChat(message, history, webSearch, knowledgeBase, chatId, file, httpRequest);
+    }
+
+    /**
+     * 核心对话逻辑（JSON 与 Multipart 共用）。
+     * <p>
+     * 与知识库模式的区别：这里的附件不做持久化/向量化/分块索引，仅作一次性原文读取后塞进 user message，
+     * 这样 AI 看到的是一份完整原文的截断版，比 RAG 相似度检索更精准。
+     *
+     * @param message       用户消息
+     * @param history       历史（保留字段，未使用）
+     * @param webSearch     深度思考
+     * @param knowledgeBase RAG 知识库
+     * @param chatId        会话 id
+     * @param file          可选附件（multipart 时有值，JSON 时为 null）
+     * @param httpRequest   用于提取 userId
+     */
+    private SseEmitter executeChat(String message, String history,
+                                   boolean webSearch, boolean knowledgeBase,
+                                   String chatId, MultipartFile file,
+                                   HttpServletRequest httpRequest) {
         // 1. 并发限流
         String clientKey = extractPrincipal(httpRequest);
         if (!rateLimiter.tryAcquire(clientKey)) {
@@ -89,18 +138,27 @@ public class AiAgentController {
         };
 
         try {
-            // 如果前端没传 chatId，自动生成一个 UUID 确保文件注册和下载可追踪
-            String chatId = request.chatId();
+            // 3. chatId 缺失则自动生成（文件注册/下载追踪用）
             if (chatId == null || chatId.isBlank()) {
                 chatId = java.util.UUID.randomUUID().toString();
             }
-            String message = request.message();
+            if (message == null) {
+                message = "";
+            }
 
-            // 记忆主键：绑定用户（多租户安全）。chatId 同一页面会话内稳定，后端据此维护多轮记忆。
+            // 4. 附件文本提取（一次性，不入库不分块）：在用户消息之上叠加一道「附件原文」
+            if (file != null && !file.isEmpty()) {
+                ExtractResult result = ChatFileTextExtractor.extract(file);
+                String attachmentBlock = result.buildAttachmentBlock();
+                // 附件内容放在用户问题之前，并引导 AI 紧扣附件作答
+                message = attachmentBlock + "\n\n请紧扣以上附件内容回答用户问题。\n\n用户问题：" + message;
+            }
+
+            // 5. 记忆主键：绑定用户（多租户安全）
             String memKey = (userId != null ? userId + ":" : "") + chatId;
 
-            // 知识库预检索式 RAG：两种模式都生效，原文拼进用户消息
-            if (request.knowledgeBase()) {
+            // 6. 知识库预检索式 RAG：在附件之上再叠加知识库检索结果（两者可叠加）
+            if (knowledgeBase) {
                 String kbContext = knowledgeRetrievalService.retrieve(message);
                 if (kbContext != null) {
                     message = "请严格基于以下知识库内容回答用户问题，不要使用你自己的通用知识。\n\n"
@@ -111,23 +169,23 @@ public class AiAgentController {
 
             // 「深度思考」关闭 → 快速直答：仍走后端 ChatMemory 取结构化历史
             // webSearch 字段语义现为「是否深度模式」，字段名保持不变以兼容前端协议
-            if (!request.webSearch()) {
+            if (!webSearch) {
                 return quickReply(chatMemory.get(memKey), message, memKey, releaseOnce);
             }
 
             // 「深度思考」开启 → Agent 模式：多步 ReAct 推理 + 工具调用
             // 1) 从 ChatMemory 拉取已窗口化 + 摘要的结构化历史（含之前各轮 user/assistant）
-            List<Message> history = chatMemory.get(memKey);
-            // 2) 持久化当前用户消息（含可能的 KB 上下文），供后续轮次检索
+            List<Message> historyMsgs = chatMemory.get(memKey);
+            // 2) 持久化当前用户消息（含可能的附件原文 + KB 上下文），供后续轮次检索
             chatMemory.add(memKey, List.of(new UserMessage(message)));
 
-            ToolCallback[] tools = toolRegistration.buildToolSet(true, request.knowledgeBase());
+            ToolCallback[] tools = toolRegistration.buildToolSet(true, knowledgeBase);
             LightManus lightManus = new LightManus(tools, openaiChatModel,
-                    true, request.knowledgeBase());
+                    true, knowledgeBase);
             // 注入 chatId 到 Agent，用于文件归属隔离（前端每次会话生成一个 UUID 作为 chatId）
             lightManus.setChatId(chatId);
             // 3) 用历史（含工具上下文的结构化消息）初始化 Agent 的 messageList
-            lightManus.setMessageList(new ArrayList<>(history));
+            lightManus.setMessageList(new ArrayList<>(historyMsgs));
             // 4) 完成后把最终答案写回 ChatMemory（仅 final answer，不含工具推理痕迹）
             Runnable persistAndRelease = () -> {
                 try {
