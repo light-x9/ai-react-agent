@@ -100,8 +100,8 @@
       <div v-if="chatStore.sessions.length === 0" class="empty-tip">暂无对话，点击上方新建</div>
     </div>
 
-    <!-- 底部：用户信息（头像 hover 展示用量） -->
-    <div class="sidebar-footer">
+    <!-- 底部：用户信息（hover 展开画像卡） -->
+    <div class="sidebar-footer" @mouseenter="footerHover = true" @mouseleave="footerHover = false">
       <div class="user-section">
         <div class="usage-box">
           <div class="usage-row">
@@ -117,6 +117,60 @@
             </span>
           </div>
         </div>
+        <!-- hover 时浮出的画像卡 -->
+        <transition name="pop">
+          <div v-if="footerHover && personaLoaded && (topTags.length || flowItems.length)" class="persona-popover">
+            <!-- 卡片头部：告诉你这是什么 -->
+            <div class="pop-title">
+              <span class="pop-title-icon">◇</span>
+              <span class="pop-title-text">你的画像</span>
+              <span class="pop-title-hint">小光越聊越懂你</span>
+            </div>
+
+            <!-- 画像摘要 -->
+            <div class="pop-summary">{{ summaryLine }}</div>
+
+            <!-- 统计数字 -->
+            <div class="pop-metrics">
+              <div class="pop-metric">
+                <span class="pop-metric-num">{{ persona.conversationCount || 0 }}</span>
+                <span class="pop-metric-label">对话轮次</span>
+              </div>
+              <div class="pop-divider" />
+              <div class="pop-metric">
+                <span class="pop-metric-num">{{ topTags.length }}</span>
+                <span class="pop-metric-label">常用技术</span>
+              </div>
+              <div class="pop-divider" />
+              <div class="pop-metric">
+                <span class="pop-metric-num">{{ (persona.recentTopics || []).length }}</span>
+                <span class="pop-metric-label">沉淀话题</span>
+              </div>
+            </div>
+
+            <!-- 技术栈标签 -->
+            <div v-if="topTags.length" class="pop-section">
+              <div class="pop-section-title">你常用的技术</div>
+              <div class="pop-tags">
+                <span v-for="tag in topTags" :key="tag" class="pop-tag">{{ tag }}</span>
+              </div>
+            </div>
+
+            <!-- 可续聊的话题 -->
+            <div v-if="flowItems.length" class="pop-section">
+              <div class="pop-section-title">点击继续聊</div>
+              <div class="pop-flow">
+                <button v-for="item in flowItems" :key="item.key" class="pop-flow-item" @click="item.handler">
+                  <span>{{ item.text }}</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="pop-flow-go">
+                    <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </transition>
+
         <div class="user-box">
           <span class="user-avatar">{{ (userStore.username || 'U').charAt(0).toUpperCase() }}</span>
           <span class="user-name">{{ userStore.username }}</span>
@@ -158,11 +212,11 @@
 </template>
 
 <script setup>
-import { ref, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chatStore'
 import { useUserStore } from '@/stores/userStore'
-import { getUsageToday } from '@/api'
+import { getUsageToday, getMyPersona } from '@/api'
 
 const router = useRouter()
 const chatStore = useChatStore()
@@ -177,10 +231,88 @@ const toggleTheme = () => {
   localStorage.setItem('lightmanus-theme', theme)
 }
 
+// 用户画像：挂载时拉取，每 5 分钟静默刷新一次
+let personaTimer = null
+const loadPersona = async () => {
+  try {
+    const data = await getMyPersona()
+    if (data && data.loggedIn) {
+      persona.value = data
+      suggestions.value = (data.suggestions || []).slice(0, 2)
+      personaLoaded.value = true
+    }
+  } catch (_) {
+    // 未登录时静默隐藏 panel
+  }
+}
+
+onMounted(() => {
+  loadPersona()
+  personaTimer = setInterval(loadPersona, 5 * 60 * 1000)
+})
+onBeforeUnmount(() => {
+  if (personaTimer) clearInterval(personaTimer)
+})
+
+// 合并「最近聊过」+ 「建议」为一个时间倒序信息流
+const flowItems = computed(() => {
+  const items = []
+  // 最近 3 条话题
+  const topics = (persona.value.recentTopics || []).slice(-3)
+  for (const t of topics) {
+    items.push({
+      key: 't-' + t,
+      type: 'topic',
+      text: t,
+      tooltip: '继续聊：' + t,
+      handler: () => emit('persona-action', '继续上次的话题：' + t)
+    })
+  }
+  // 2 条建议
+  for (const s of suggestions.value.slice(0, 2)) {
+    const clean = s.replace(/^(继续聊：|深入了解：)/, '')
+    items.push({
+      key: 's-' + s,
+      type: 'suggestion',
+      text: clean,
+      tooltip: clean,
+      handler: () => emit('persona-action', clean)
+    })
+  }
+  return items.slice(0, 4) // 总共最多 4 条，避免过高
+})
+
+// 父组件事件
+const emit = defineEmits(['persona-action'])
+
 const usage = ref({ chatUsed: 0, chatLimit: 100, searchUsed: 0, searchLimit: 30 })
 const deleteTarget = ref(null)
+const footerHover = ref(false)
 // 删除进行中状态：锁住按钮防重复点击
 const deleting = ref(false)
+
+// 用户画像数据
+const persona = ref({})
+const suggestions = ref([])
+const personaLoaded = ref(false)
+const topTags = computed(() => {
+  const ts = persona.value.techStack
+  if (!ts) return []
+  return ts.split(',').filter(Boolean).slice(0, 5).map(t => t.trim())
+})
+
+// 画像摘要行：告诉用户「你是谁」—— 由技术栈 + 兴趣组合成一句话
+const summaryLine = computed(() => {
+  const interests = persona.value.interests
+  const tags = topTags.value
+  if (interests) {
+    const first = interests.split(',').map(s => s.trim()).filter(Boolean)[0]
+    if (first && tags.length) return `${first} · 常用 ${tags.slice(0, 2).join(' / ')}`
+    if (first) return `专注 ${first}`
+  }
+  if (tags.length) return `常用 ${tags.slice(0, 3).join(' / ')}`
+  return '还未建立画像，多聊几轮就有了'
+})
 
 // 操作结果 toast（删除成功 / 删除失败）
 const actionToast = ref('')
@@ -493,8 +625,169 @@ defineExpose({ refreshUsage })
   color: var(--text-tertiary);
 }
 
-/* ---------- 底部：用户区域（hover 展开用量） ---------- */
+/* ---------- hover 浮出的画像卡 ---------- */
+.persona-popover {
+  position: absolute;
+  bottom: 100%;
+  left: 8px;
+  right: 8px;
+  margin-bottom: 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+/* 卡片头部标题 */
+.pop-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pop-title-icon {
+  font-size: 0.75rem;
+  color: var(--accent);
+  opacity: 0.7;
+}
+.pop-title-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.pop-title-hint {
+  font-size: 0.625rem;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+/* 画像摘要句 */
+.pop-summary {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* 三列统计数字 */
+.pop-metrics {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.pop-metric {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.pop-metric-num {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.pop-metric-label {
+  font-size: 0.625rem;
+  color: var(--text-tertiary);
+}
+.pop-divider {
+  width: 1px;
+  height: 28px;
+  background: var(--border-subtle);
+}
+
+/* 统一区块 */
+.pop-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pop-section-title {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+/* 技术栈标签 */
+.pop-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.pop-tag {
+  font-size: 0.7rem;
+  padding: 3px 9px;
+  border-radius: 4px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+/* 话题流 */
+.pop-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pop-flow-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+.pop-flow-item:hover { background: rgba(0, 0, 0, 0.03); }
+.pop-flow-item span {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+}
+.pop-flow-item:hover span { color: var(--text-primary); }
+.pop-flow-go {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.15s, transform 0.15s;
+}
+.pop-flow-item:hover .pop-flow-go {
+  opacity: 1;
+  transform: translateX(0);
+  color: var(--text-secondary);
+}
+
+/* 弹出动画 */
+.pop-enter-active, .pop-leave-active {
+  transition: opacity 0.18s, transform 0.18s;
+}
+.pop-enter-from, .pop-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+/* ---------- 底部：用户区域 ---------- */
 .sidebar-footer {
+  position: relative;
   border-top: 1px solid var(--border-subtle);
   padding: 8px 12px;
 }

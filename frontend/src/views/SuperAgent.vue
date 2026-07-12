@@ -1,6 +1,6 @@
 <template>
   <div class="super-agent-container">
-    <SessionSidebar ref="sidebarRef" />
+    <SessionSidebar ref="sidebarRef" @persona-action="handlePersonaAction" />
     <!-- 管理知识库 — 页面右上角 -->
     <button class="header-btn manage-btn" @click="openManageDialog" title="上传 / 管理知识库文档">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -682,6 +682,11 @@ const closeManageDialog = () => {
  * 接入真实后端时，只需替换 runMockReActStream() 为 connectSSE()，
  * 在 onmessage 中根据 event.data 的 type 字段调用对应函数即可。
  */
+const handlePersonaAction = (text) => {
+  // 来自侧边栏画像面板的话题/建议点击 → 直接作为消息发送
+  sendMessage(text)
+}
+
 const sendMessage = async (message, attachmentFile = null) => {
   // 无活跃会话时自动创建（首次发消息、或全部会话被删除后）
   if (!chatStore.activeId) {

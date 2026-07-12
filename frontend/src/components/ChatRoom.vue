@@ -3,7 +3,9 @@
     <!-- 聊天记录区域 -->
     <div class="chat-messages" ref="messagesContainer">
             <div v-if="!hasUserMessages" class="welcome-panel">
-        <h2 class="welcome-title">今天想完成什么？</h2>
+        <h2 class="welcome-title">
+          今天想完成什么？
+        </h2>
         <p class="welcome-desc">我可以帮你联网调研、写作、内容分析，并把成果导出为文档、表格或 PDF。</p>
         <div class="suggestions">
           <button
@@ -287,6 +289,7 @@ const inputMessage = ref('')
 const messagesContainer = ref(null)
 const inputEl = ref(null)
 const fileInputEl = ref(null)
+
 
 // 对话附件（一次性的，发出即清空；与知识库持久上传不同）
 const attachmentFile = ref(null)   // File 对象
@@ -593,7 +596,6 @@ onMounted(() => {
   letter-spacing: -0.02em;
   text-align: center;
 }
-
 .welcome-desc {
   font-family: var(--font-body);
   font-size: 0.9375rem;

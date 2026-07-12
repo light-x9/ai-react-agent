@@ -210,6 +210,12 @@ export const renameConversation = async (id, title) => {
   return res.data
 }
 
+// ============ 个人画像接口（个人知识引擎） ============
+export const getMyPersona = async () => {
+  const res = await request.get('/ai/persona/me')
+  return res.data
+}
+
 // ============ 文件下载接口 ============
 
 /**
