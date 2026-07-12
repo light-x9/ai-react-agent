@@ -216,6 +216,16 @@ export const getMyPersona = async () => {
   return res.data
 }
 
+// ============ 多模型路由接口 ============
+export const listModels = async () => {
+  const res = await request.get('/ai/models')
+  return res.data
+}
+export const lockModel = async (modelName) => {
+  const res = await request.post('/ai/models/lock', { modelName: modelName || '' })
+  return res.data
+}
+
 // ============ 文件下载接口 ============
 
 /**

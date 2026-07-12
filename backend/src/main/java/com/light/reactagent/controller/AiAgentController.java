@@ -167,6 +167,56 @@ public class AiAgentController {
     }
 
     /**
+     * 获取当前可用模型列表 + 路由健康状态。前端据此渲染「模型选择」下拉。
+     */
+    @GetMapping("/ai/models")
+    public Map<String, Object> listModels() {
+        // 如果路由器是 MultiModelRouter，暴露 route 状态
+        if (openaiChatModel instanceof com.light.reactagent.router.MultiModelRouter router) {
+            List<Map<String, Object>> models = new ArrayList<>();
+            for (com.light.reactagent.router.RouteModel r : router.getRoutes()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("name", r.getName());
+                m.put("primary", r.isPrimary());
+                m.put("costWeight", r.getCostWeight());
+                m.put("description", r.getDescription());
+                m.put("circuitOpen", r.isCircuitOpen());
+                m.put("consecutiveFailures", r.getConsecutiveFailures());
+                models.add(m);
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("models", models);
+            result.put("totalCalls", router.getTotalCalls());
+            result.put("fallbackCalls", router.getFallbackCalls());
+            return result;
+        }
+        // 兜底：没有路由器时把当前模型包装成单条
+        Map<String, Object> single = new LinkedHashMap<>();
+        single.put("name", "default");
+        single.put("primary", true);
+        single.put("costWeight", 1.0);
+        single.put("description", "默认模型");
+        single.put("circuitOpen", false);
+        single.put("consecutiveFailures", 0);
+        return Map.of("models", List.of(single), "totalCalls", 0, "fallbackCalls", 0);
+    }
+
+    /**
+     * 前端主动锁定模型（传 body: {"modelName": "ollama"}）。
+     * 当前会话后续调用都走被锁定的模型，不再 failover。
+     */
+    @PostMapping("/ai/models/lock")
+    public Map<String, Object> lockModel(@RequestBody Map<String, Object> body) {
+        String modelName = (String) body.get("modelName");
+        if (modelName == null || modelName.isBlank()) {
+            com.light.reactagent.tools.file.FileContextHolder.lockModelName(null);
+            return Map.of("locked", "");
+        }
+        com.light.reactagent.tools.file.FileContextHolder.lockModelName(modelName);
+        return Map.of("locked", modelName);
+    }
+
+    /**
      * JSON 入口（向后兼容）：无附件时的常规对话。
      */
     @PostMapping(value = "/manus/chat",

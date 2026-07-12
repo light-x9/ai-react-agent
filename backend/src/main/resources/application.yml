@@ -28,6 +28,28 @@ spring:
       base-url: http://localhost:11434
       chat:
         model: gemma3:1b
+  # 多模型路由：未配置时走 spring.ai 默认 ChatModel 兜底
+  #router:
+  #  health:
+  #    failure-threshold: 3        # 连续失败 3 次开熔断
+  #    reset-timeout-ms: 120000    # 120s 后半开试探
+  #    check-interval-ms: 30000
+  #    enabled: true
+  #  models:
+  #    - name: deepseek
+  #      primary: true
+  #      model-id: deepseek-chat
+  #      provider: openai
+  #      cost-weight: 1.0
+  #    - name: qwen
+  #      model-id: qwen3-32b
+  #      provider: openai         # 通义若走 OpenAI 兼容网关则用此
+  #      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  #      cost-weight: 0.8
+  #    - name: ollama
+  #      model-id: gemma3:1b
+  #      provider: ollama
+  #      cost-weight: 0.1
   jpa:
     hibernate:
       ddl-auto: update
