@@ -35,7 +35,7 @@
 ## 功能亮点
 
 - **ReAct 推理循环** — Thought -> Action -> Observation 多步推理链路，工具调用与思考交替进行
-- **多工具协同** — 11 个本地工具 + MCP 协议扩展（图片搜索、高德地图），支持能力开关按需装配
+- **多工具协同** — 8 个本地工具 + MCP 协议扩展（图片搜索、高德地图），支持能力开关按需装配
 - **RAG 知识库** — 基于 PGvector 的向量检索，支持文档上传、预览、批量删除与语义搜索
 - **流式响应** — 基于 SSE（Server-Sent Events）实时推送推理步骤，15s 心跳防超时
 - **MCP 协议支持** — 通过 Model Context Protocol 接入外部工具，失败自动降级为纯本地工具
@@ -61,14 +61,14 @@ BaseAgent -> ReActAgent -> ToolCallAgent -> LightManus
 
 ### 工具系统
 
-#### 本地工具（11 个）
+#### 本地工具（8 个）
 
 | 工具 | 功能 | 底层实现 |
 |------|------|----------|
 | webSearch | 联网搜索（含自动抓取摘要） | Serper API + Jsoup |
 | knowledgeSearch | 知识库语义检索 | PGvector + DashScope Embedding |
 | scrapeWebPage | 抓取网页全文内容 | Jsoup |
-| readFile / writeFile | 文件读写 | Java NIO，路径穿越防护 |
+| FileOperationTool | 文件读写 + 生成 md/txt/json/csv | Java NIO，路径穿越防护 |
 | downloadResource | 下载远程资源 | Hutool，SSRF 防护（禁私有 IP/localhost） |
 | generatePDF | 生成 PDF 文件 | iText，文件名穿越防护 |
 | executeTerminalCommand | 执行终端命令 | ProcessBuilder，黑名单 + 沙箱 + 超时 + 全局开关 |
@@ -116,7 +116,7 @@ BaseAgent -> ReActAgent -> ToolCallAgent -> LightManus
 | 数据库 | PostgreSQL 16 + PGvector（向量检索） |
 | 认证 | Spring Security + JWT (HS256) + BCrypt |
 | MCP | Spring AI MCP Client (StdioTransport) |
-| 前端 | Vue 3, Vite 5, Vue Router 4, Pinia 3 |
+| 前端 | Vue 3, Vite 4, Vue Router 4, Pinia 3 |
 | 状态持久化 | pinia-plugin-persistedstate (localStorage) |
 | HTTP | Axios, fetch + ReadableStream (SSE) |
 | 工具库 | Hutool, Jsoup, iText, Kryo |
@@ -317,7 +317,7 @@ ai-react-agent/
 
 ### 安全配置要点
 
-- **终端工具**：`lightmanus.tool.terminal.enabled` 默认 false，仅受控内网可开启
+- **终端工具**：`lightmanus.tool.terminal.enabled` 代码默认 `true`，但 `application-prod.yml` 已显式置为 `false`；仅受控内网可手动开启
 - **CORS**：`cors.allowed-origins` 开发用 `*`，生产必须改为具体前端域名
 - **JWT**：生产环境必须设置 `JWT_SECRET` 环境变量（≥32 字节随机字符串）
 - **认证限流**：`/auth/login` 和 `/auth/register` 限制 5 次/秒/IP

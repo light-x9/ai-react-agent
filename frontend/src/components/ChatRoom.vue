@@ -4,7 +4,7 @@
     <div class="chat-messages" ref="messagesContainer">
             <div v-if="!hasUserMessages" class="welcome-panel">
         <h2 class="welcome-title">今天想完成什么？</h2>
-        <p class="welcome-desc">我可以帮你调研、写作、分析、写代码，甚至把成果直接生成文件。</p>
+        <p class="welcome-desc">我可以帮你联网调研、写作、内容分析，并把成果导出为文档、表格或 PDF。</p>
         <div class="suggestions">
           <button
             v-for="q in suggestedQuestions"
@@ -261,33 +261,32 @@ const toggleCap = (key) => {
 
 /**
  * 题库：任务导向型快捷建议，每次随机抽取 4 条展示。
- * 覆盖调研、写作、代码、分析、创作、数据处理等核心能力场景。
+ * 覆盖联网调研、写作创作、内容分析、文档导出、知识问答等真实支持的能力场景。
  */
 const QUESTION_POOL = [
-  // 调研 / 分析
+  // 联网调研 / 分析
   '整理一份竞品调研并导出表格',
-  '帮我分析这段代码的错误',
   '搜索今天的 AI 领域热点新闻',
   '对比 Vue 3 和 React 的核心差异',
+  '帮我做一份 SWOT 分析并生成表格',
   // 写作 / 创作
   '帮我写一篇小红书文案',
   '写一份周报，涵盖本周主要进展',
   '帮我写一封正式的商务邮件',
+  '润色并优化我这段自我介绍',
+  // 文档 / 导出
+  '整理一份市场调研报告并导出 PDF',
+  '把一份产品介绍整理成 Markdown 文档',
   '生成项目 README 并下载',
-  // 代码 / 开发
-  '用 Python 实现一个爬虫脚本',
-  '帮我写一个 Docker Compose 配置',
-  '实现一个防抖函数（JavaScript）',
-  '帮我设计一套 RESTful API 接口',
-  // 数据 / 表格
-  '把这份 JSON 数据转成 Excel 表格',
-  '帮我整理这份文档的重点摘要',
-  '生成一份年度数据统计报告',
+  '帮我列一份健身周计划表并导出',
+  // 知识 / 概念
+  '解释一下什么是 MCP 协议',
+  '解释一下 RAG 检索增强生成的原理',
+  '推荐几本适合入门的编程书',
   // 生活 / 其他
   '规划一个杭州三日游路线',
-  '推荐几本适合入门的编程书',
-  '解释一下什么是 MCP 协议',
   '月薪一万怎么开始学理财',
+  '帮我拟一份周末家庭聚餐菜单',
 ]
 
 const suggestedQuestions = ref([])
