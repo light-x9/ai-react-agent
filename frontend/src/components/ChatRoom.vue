@@ -65,6 +65,16 @@
                 </div>
               </div>
               <div class="message-time">{{ formatTime(msg.time) }}</div>
+              <!-- 对话生成的图表卡片（AnalyzeDataTool 产出 [CHART_FILE=...] 标记时渲染） -->
+              <div v-if="msg.chartFiles && msg.chartFiles.length > 0" class="chart-cards">
+                <ChartCard
+                  v-for="cf in msg.chartFiles"
+                  :key="cf.fileId"
+                  :file-id="cf.fileId"
+                  :chat-id="chatId"
+                  :title="cf.title"
+                />
+              </div>
               <!-- 文件下载卡片：AI 生成文件后展示 -->
               <transition-group v-if="msg.files && msg.files.length > 0" name="file-card" tag="div" class="file-cards">
                 <div v-for="file in msg.files" :key="file.fileId" class="file-card">
@@ -239,6 +249,7 @@
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import AiAvatarFallback from './AiAvatarFallback.vue'
 import ReActSteps from './ReActSteps.vue'
+import ChartCard from './ChartCard.vue'
 import { downloadFile as downloadFileApi } from '@/api'
 import { stripMarkdown } from '@/utils/markdown'
 
@@ -1011,6 +1022,15 @@ onMounted(() => {
   border: 1px solid rgba(239, 68, 68, 0.2);
   color: #dc2626;
   font-size: 0.75rem;
+}
+
+/* ---------- 图表卡片 ---------- */
+.chart-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+  min-width: 320px;
 }
 
 /* 文件卡片入场动画 */

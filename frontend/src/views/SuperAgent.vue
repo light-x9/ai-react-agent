@@ -787,6 +787,8 @@ const sendMessage = async (message, attachmentFile = null) => {
             if (event.files && event.files.length > 0) {
               msg.files = event.files
             }
+            // 扫描全量文本中的 [CHART_FILE=xxx] 标记（AnalyzeDataTool 产出）
+            attachChartFiles(msg)
             break
           case 'error':
             if (currentStep && (currentStep.thought || currentStep.tool)) {
@@ -869,6 +871,31 @@ const sendMessage = async (message, attachmentFile = null) => {
         if (eventSource) { eventSource.close(); eventSource = null }
       }
     )
+  }
+}
+
+/**
+ * 从 AI 消息的全量文本中扫描 [CHART_FILE=<fileId>] 标记，
+ * 解析为 msg.chartFiles 数组（{ fileId, title }）， Conversation 组件遇到此数组时渲染 ChartCard。
+ * 同时把这些标记从 content 主文本里剔除，避免展示冗余的标记文本。
+ */
+function attachChartFiles(msg) {
+  if (!msg || typeof msg.content !== 'string') return
+  const re = /\[CHART_FILE=([^\]]+)\]/g
+  const found = []
+  let m
+  while ((m = re.exec(msg.content)) !== null) {
+    found.push({ fileId: m[1], title: '数据图表' })
+  }
+  if (found.length > 0) {
+    // 去重（同一 fileId 不重复渲染）
+    const existing = new Set((msg.chartFiles || []).map(f => f.fileId))
+    const toAdd = found.filter(f => !existing.has(f.fileId))
+    if (toAdd.length > 0) {
+      msg.chartFiles = [...(msg.chartFiles || []), ...toAdd]
+    }
+    // 从正文里剥离标记（以及前面出现的可疑 “已生成图表配置文件” 等提示行）
+    msg.content = msg.content.replace(/\[CHART_FILE=[^\]]+\]/g, '').trim()
   }
 }
 

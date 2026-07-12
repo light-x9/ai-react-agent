@@ -57,6 +57,8 @@ public class ToolRegistration {
         tools.add(new FileOperationTool(fileMetadataManager));
         tools.add(new PDFGenerationTool(fileMetadataManager));
         tools.add(new ResourceDownloadTool(fileMetadataManager));
+        // 数据分析常驻（用于分析用户上传的 CSV/Excel）
+        tools.add(new AnalyzeDataTool(fileMetadataManager));
         if (webSearch) {
             tools.add(webSearchTool);
             tools.add(new WebScrapingTool());

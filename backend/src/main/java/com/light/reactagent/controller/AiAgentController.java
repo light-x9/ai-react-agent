@@ -10,6 +10,7 @@ import com.light.reactagent.util.ChatFileTextExtractor;
 import com.light.reactagent.util.ChatFileTextExtractor.ExtractResult;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
@@ -28,6 +29,8 @@ import org.springframework.http.MediaType;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.io.File;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -38,6 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * <p>
  * 按前端能力开关动态装配工具子集：纯对话/网页搜索/知识库/双开。
  */
+@Slf4j
 @RestController
 @RequestMapping("/ai")
 public class AiAgentController {
@@ -147,11 +151,29 @@ public class AiAgentController {
             }
 
             // 4. 附件文本提取（一次性，不入库不分块）：在用户消息之上叠加一道「附件原文」
+            String savedAttachmentPath = null;
             if (file != null && !file.isEmpty()) {
                 ExtractResult result = ChatFileTextExtractor.extract(file);
                 String attachmentBlock = result.buildAttachmentBlock();
                 // 附件内容放在用户问题之前，并引导 AI 紧扣附件作答
                 message = attachmentBlock + "\n\n请紧扣以上附件内容回答用户问题。\n\n用户问题：" + message;
+
+                // 附件为数据文件时：额外保存到 workspace，让 LLM 能调用 AnalyzeDataTool 生成图表
+                String fn = file.getOriginalFilename() != null ? file.getOriginalFilename() : "data.csv";
+                if (isDataFile(fn)) {
+                    try {
+                        savedAttachmentPath = saveAttachmentToWorkspace(file, fn);
+                    } catch (Exception e) {
+                        log.warn("附件保存到 workspace 失败（不影响对话链路）：{}", e.getMessage());
+                    }
+                }
+            }
+
+            // 5. 若识别到数据文件，追加提示让 LLM 主动调 AnalyzeDataTool 出图
+            if (savedAttachmentPath != null) {
+                message += "\n\n提示：该文件是一个数据文件，已保存到工作区 '" + savedAttachmentPath
+                        + "'。你可以调用 analyze(filePath=\"" + savedAttachmentPath + "\")" +
+                        " 让它生成一份交互式图表（JSON），图表配置会以文件形式返回给用户。";
             }
 
             // 5. 记忆主键：绑定用户（多租户安全）
@@ -278,6 +300,38 @@ public class AiAgentController {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
+    }
+
+    /** 判断文件名是否为可解析的数据文件 */
+    private static boolean isDataFile(String name) {
+        if (name == null) return false;
+        String lower = name.toLowerCase().trim();
+        return lower.endsWith(".csv") || lower.endsWith(".tsv")
+                || lower.endsWith(".xlsx") || lower.endsWith(".xls")
+                || lower.endsWith(".json");
+    }
+
+    /**
+     * 把附件字节保存到工作区 sandbox（固定到 file/ 子目录下），使 AnalyzeDataTool 能通过相对路径读取。
+     * 文件名加 UUID 前缀避免并发/同名覆盖。
+     *
+     * @return 相对路径（file/xxx）供后续 analyze(filePath=...) 调用；失败返回 null
+     */
+    private String saveAttachmentToWorkspace(MultipartFile file, String originalName) {
+        if (file == null || file.isEmpty()) return null;
+        try {
+            // 沙箱根：复用 FileToolSupport.resolveBaseDir("file")
+            File baseDir = com.light.reactagent.tools.file.FileToolSupport.resolveBaseDir("file");
+            baseDir.mkdirs();
+            String safeName = originalName.replaceAll("[^a-zA-Z0-9.\\-_]", "_");
+            String internalName = System.currentTimeMillis() + "_" + safeName;
+            File target = new File(baseDir, internalName);
+            Files.copy(file.getInputStream(), target.toPath());
+            return "file/" + internalName;
+        } catch (Exception e) {
+            log.warn("saveAttachmentToWorkspace 失败：{}", e.getMessage(), e);
+            return null;
+        }
     }
 
     private SseEmitter rejectWith(String message) {
