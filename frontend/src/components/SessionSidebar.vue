@@ -117,9 +117,9 @@
             </span>
           </div>
         </div>
-        <!-- hover 时浮出的画像卡 -->
+        <!-- hover 时浮出的画像卡 —— 已关闭展示 -->
         <transition name="pop">
-          <div v-if="footerHover && personaLoaded && (topTags.length || flowItems.length)" class="persona-popover">
+          <div v-if="false && footerHover && personaLoaded && (topTags.length || flowItems.length)" class="persona-popover">
             <!-- 卡片头部：告诉你这是什么 -->
             <div class="pop-title">
               <span class="pop-title-icon">◇</span>
