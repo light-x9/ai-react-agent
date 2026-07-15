@@ -62,6 +62,15 @@ public abstract class BaseAgent {
     private Runnable onAgentComplete;
 
     /**
+     * 启动事件 JSON 字符串（由 Controller 注入），在 runStream 异步线程中、进入 step 循环前作为首条 SSE 发送。
+     * 格式：完整的 SSE data 行内容（不含 data: 前缀），例如 {"type":"phase","mode":"webSearch",...}
+     * 为 null 时不发送启动事件（向前兼容纯文本 Step 模式）。
+     * <p>
+     * 参考 edu-agent 的多级 SSE 事件语义：phase → intent → agentProgress → token → resource → done。
+     */
+    private String startupEventJson;
+
+    /**
      * 停止标志：onTimeout / onCompletion 回调设置此标志，异步线程的 step 循环每轮检查，
      * 及时退出循环，避免心跳泄漏和线程空转。
      */
@@ -183,6 +192,14 @@ public abstract class BaseAgent {
             // 保存结果列表
             List<String> results = new ArrayList<>();
             try {
+                // 发送启动上下文事件（模式/画像/可用工具），让前端渲染状态指示器
+                // 在多 Agent 场景下相当于 edu-agent 的 phase 事件
+                if (startupEventJson != null && !startupEventJson.isBlank()) {
+                    try {
+                        sseEmitter.send(startupEventJson);
+                    } catch (Exception ignored) {
+                    }
+                }
                 // 执行循环（每轮检查 stopped 标志，onTimeout 可中断循环）
                 for (int i = 0; i < maxSteps && state != AgentState.FINISHED && !stopped; i++) {
                     int stepNumber = i + 1;

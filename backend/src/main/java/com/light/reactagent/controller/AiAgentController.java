@@ -103,12 +103,13 @@ public class AiAgentController {
     @GetMapping("/persona/me")
     public Map<String, Object> getMyPersona(HttpServletRequest httpRequest) {
         String nickname = resolveNickname(httpRequest);
-        String clientKey = extractPrincipal(httpRequest);
-        Long userId = clientKey.startsWith("user:") ? Long.valueOf(clientKey.substring(5)) : null;
-        if (userId == null || nickname == null) {
+        if (nickname == null) {
             return Map.of("loggedIn", false);
         }
-        PersonaProfile p = personaProfileService.getOrCreate(userId, nickname);
+        PersonaProfile p = personaProfileService.getOrCreate(nickname);
+        if (p == null) {
+            return Map.of("loggedIn", false);
+        }
         List<String> recentTopics = parseTopicsSafe(p.getRecentTopics());
 
         // 基于最近话题生成 3 条「你可能想继续」的建议
@@ -293,11 +294,11 @@ public class AiAgentController {
             }
 
             // 4. 画像注入：在 user message 前追加「用户是谁」片段，让 LLM 每次对话前都记住用户
+            // 注意：userId 变量实际是 username 字符串（由 extractPrincipal 返回 "user:" + username）
             String nickname = resolveNickname(httpRequest);
-            Long userIdLong = (userId != null && !userId.isBlank()) ? Long.valueOf(userId) : null;
-            if (userIdLong != null && nickname != null) {
-                personaProfileService.touchConversation(userIdLong, nickname);
-                String personaCtx = personaProfileService.buildSystemContext(userIdLong, nickname);
+            if (userId != null && !userId.isBlank() && nickname != null) {
+                personaProfileService.touchConversation(nickname);
+                String personaCtx = personaProfileService.buildSystemContext(nickname);
                 if (personaCtx != null && !personaCtx.isBlank()) {
                     // 把画像拼到 user message 头部（权重仅次于 system prompt）
                     message = "<<<USER_PERSONA>>>\n" + personaCtx + "\n<<<END_USER_PERSONA>>>\n\n" + message;
@@ -347,12 +348,11 @@ public class AiAgentController {
             // webSearch 字段语义现为「是否深度模式」，字段名保持不变以兼容前端协议
             if (!webSearch) {
                 // 包装 onComplete：先异步更新画像，再释放并发许可
-                final Long finalUserIdL = userIdLong;
                 final String finalNicknameL = nickname;
                 final String finalMessageL = message;
                 Runnable releaseWithPersona = () -> {
                     try {
-                        triggerPersonaUpdate(finalUserIdL, finalNicknameL, finalMessageL, null);
+                        triggerPersonaUpdate(finalNicknameL, finalMessageL, null);
                     } finally {
                         releaseOnce.run();
                     }
@@ -371,13 +371,14 @@ public class AiAgentController {
                     true, knowledgeBase);
             // 注入 chatId 到 Agent，用于文件归属隔离（前端每次会话生成一个 UUID 作为 chatId）
             lightManus.setChatId(chatId);
+            // 注入启动上下文事件（模式/画像/工具集），让前端在 Agent 开始推理前渲染状态指示器
+            lightManus.setStartupEventJson(buildStartupEvent(webSearch, knowledgeBase, tools, nickname));
             // 3) 用历史（含工具上下文的结构化消息）初始化 Agent 的 messageList
             lightManus.setMessageList(new ArrayList<>(historyMsgs));
             // 4) 完成后把最终答案写回 ChatMemory（仅 final answer，不含工具推理痕迹）
             // 5) 异步更新用户画像（从本轮对话摘要中抽取偏好/话题增量）
             final String finalUserMsg = message;
             final String finalNickname = nickname;
-            final Long finalUserId = userIdLong;
             Runnable persistAndRelease = () -> {
                 String ans = null;
                 try {
@@ -389,7 +390,7 @@ public class AiAgentController {
                     // 记忆写入失败不影响主流程
                 } finally {
                     // 画像更新永不阻塞主流程，放在 finally 里确保总被触发
-                    triggerPersonaUpdate(finalUserId, finalNickname, finalUserMsg, ans);
+                    triggerPersonaUpdate(finalNickname, finalUserMsg, ans);
                     releaseOnce.run();
                 }
             };
@@ -475,6 +476,63 @@ public class AiAgentController {
                 .replace("\t", "\\t");
     }
 
+    /**
+     * 构建启动阶段的 phase 事件 JSON，在 Agent 开始推理前发送给前端。
+     * <p>
+     * 参考 edu-agent 的 phase 事件：告知前端当前使用的模式、活跃画像和可用工具数量，
+     * 前端据此渲染「小光模式 / 画像徽章」等状态指示器。
+     *
+     * @param webSearch    是否开启深度思考
+     * @param knowledgeBase 是否开启知识库
+     * @param tools        当前可用工具数组
+     * @param userId       当前用户 ID
+     * @param nickname     当前用户昵称
+     * @return SSE data 行格式的 JSON 字符串
+     */
+    private String buildStartupEvent(boolean webSearch, boolean knowledgeBase,
+                                     org.springframework.ai.tool.ToolCallback[] tools,
+                                     String nickname) {
+        String mode;
+        if (webSearch && knowledgeBase) {
+            mode = "webSearch+kb";
+        } else if (webSearch) {
+            mode = "webSearch";
+        } else if (knowledgeBase) {
+            mode = "kb";
+        } else {
+            mode = "plain";
+        }
+        int toolCount = (tools != null) ? tools.length : 0;
+        // 提取可用工具名称列表（取 ToolCallback 的 tool name，最多展示前 8 个），输出 JSON 字符串数组
+        StringBuilder toolNames = new StringBuilder("[");
+        if (tools != null) {
+            int limit = Math.min(tools.length, 8);
+            for (int i = 0; i < limit; i++) {
+                if (i > 0) toolNames.append(",");
+                String name = null;
+                try {
+                    name = tools[i].getToolDefinition().name();
+                } catch (Exception ignored) {
+                }
+                if (name == null || name.isBlank()) name = "tool" + i;
+                toolNames.append("\"").append(escapeJson(name)).append("\"");
+            }
+        }
+        toolNames.append("]");
+        // 构建 persona 摘要（nickname 非空即视为画像激活）
+        String personaJson = (nickname != null && !nickname.isBlank())
+                ? "\"persona\":{\"active\":true,\"nickname\":\"" + escapeJson(nickname) + "\"}"
+                : "\"persona\":{\"active\":false}";
+
+        return "{\"type\":\"phase\""
+                + ",\"phase\":\"agent_start\""
+                + ",\"" + "mode\":\"" + mode + "\""
+                + ",\"toolCount\":" + toolCount
+                + ",\"toolNames\":[" + toolNames + "]"
+                + "," + personaJson
+                + "}";
+    }
+
     /** 判断文件名是否为可解析的数据文件 */
     private static boolean isDataFile(String name) {
         if (name == null) return false;
@@ -520,16 +578,18 @@ public class AiAgentController {
 
     /**
      * 触发异步画像更新（从本轮对话摘要中抽取偏好/话题增量）。
-     * 任何参数为 null 时静默跳过，绝不抛异常。
+     * 参数为 null 时静默跳过，绝不抛异常。
+     *
+     * @param nickname 登录用户名（非数字 ID）
      */
-    private void triggerPersonaUpdate(Long userId, String nickname, String userMsg, String assistantMsg) {
-        if (userId == null || nickname == null) return;
+    private void triggerPersonaUpdate(String nickname, String userMsg, String assistantMsg) {
+        if (nickname == null || nickname.isBlank()) return;
         try {
             String u = (userMsg == null) ? "" : userMsg;
             String a = (assistantMsg == null) ? "" : assistantMsg;
             // 剥离 <<<USER_PERSONA>>> 段，避免画像片段被重复抽取
             u = u.replaceAll("<<<USER_PERSONA>>>.*<<<END_USER_PERSONA>>>", "").strip();
-            personaProfileService.afterConversationAsync(userId, nickname, u, a);
+            personaProfileService.afterConversationAsync(nickname, u, a);
         } catch (Exception e) {
             log.warn("[Persona] triggerPersonaUpdate 失败（不影响主流程）：{}", e.getMessage());
         }

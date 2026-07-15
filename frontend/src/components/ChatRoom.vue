@@ -26,6 +26,24 @@
               <AiAvatarFallback :type="aiType" />
             </div>
             <div class="ai-message-body">
+              <!-- Phase 启动指示器：展示当前推理模式 / 用户画像 / 可用工具集 -->
+              <transition name="phase-fade">
+                <div v-if="msg.phase && msg._phaseShowing" class="phase-indicator" :class="'phase-mode-' + (msg.phase.mode || 'plain')">
+                  <div class="phase-row">
+                    <span class="phase-mode-badge">
+                      <svg class="phase-spark" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                      {{ modeLabel(msg.phase.mode) }}
+                    </span>
+                    <span v-if="msg.phase.persona && msg.phase.persona.active" class="phase-persona-chip" :title="'画像驱动：' + (msg.phase.persona.nickname || '用户')">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                      {{ msg.phase.persona.nickname || '画像' }}
+                    </span>
+                    <span class="phase-tool-count" :title="(msg.phase.toolNames || []).join('、')">
+                      {{ msg.phase.toolCount }} 个工具就绪
+                    </span>
+                  </div>
+                </div>
+              </transition>
               <ReActSteps
                 v-if="msg.reactCycles && msg.reactCycles.length > 0"
                 :cycles="msg.reactCycles"
@@ -462,6 +480,20 @@ const sendMessage = () => {
 const formatTime = (timestamp) => {
   const date = new Date(timestamp)
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+/**
+ * 将后端 mode 字符串映射为前端中文标签（用于 Phase 指示器）
+ * @param {string} mode - 'plain' | 'webSearch' | 'kb' | 'webSearch+kb'
+ */
+const modeLabel = (mode) => {
+  switch (mode) {
+    case 'webSearch+kb': return '深度思考 + 知识库'
+    case 'webSearch':    return '深度思考'
+    case 'kb':           return '知识库'
+    case 'plain':
+    default:             return '纯对话'
+  }
 }
 
 // ---------- 文件下载 ----------
@@ -1210,6 +1242,115 @@ onMounted(() => {
 @keyframes fadeSlideIn {
   from { opacity: 0; transform: translateX(-8px); }
   to { opacity: 1; transform: translateX(0); }
+}
+
+/* ---------- Phase 启动指示器 ---------- */
+.phase-indicator {
+  margin-bottom: 8px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.06), rgba(124, 58, 237, 0.06));
+  border: 1px solid rgba(37, 99, 235, 0.15);
+  animation: phaseSlideIn 0.3s ease-out;
+  overflow: hidden;
+}
+
+.phase-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.phase-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.1);
+  padding: 3px 10px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.phase-spark {
+  animation: sparkPulse 2s ease-in-out infinite;
+}
+
+@keyframes sparkPulse {
+  0%, 100% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.phase-persona-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.08);
+  padding: 3px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.phase-tool-count {
+  font-size: 0.6875rem;
+  color: #6b7280;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* 模式变体染色 */
+.phase-mode-plain .phase-mode-badge { color: #059669; background: rgba(5, 150, 105, 0.1); }
+.phase-mode-plain { border-color: rgba(5, 150, 105, 0.15); background: linear-gradient(135deg, rgba(5, 150, 105, 0.05), rgba(16, 185, 129, 0.04)); }
+
+.phase-mode-kb .phase-mode-badge { color: #d97706; background: rgba(217, 119, 6, 0.1); }
+.phase-mode-kb { border-color: rgba(217, 119, 6, 0.15); background: linear-gradient(135deg, rgba(217, 119, 6, 0.05), rgba(245, 158, 11, 0.04)); }
+
+.phase-mode-webSearch\+kb .phase-mode-badge { color: #c026d3; background: rgba(192, 38, 211, 0.1); }
+.phase-mode-webSearch\+kb { border-color: rgba(192, 38, 211, 0.15); background: linear-gradient(135deg, rgba(192, 38, 211, 0.05), rgba(217, 70, 239, 0.04)); }
+
+/* 入场/退场过渡 */
+.phase-fade-enter-active {
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.phase-fade-leave-active {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  max-height: 40px;
+}
+.phase-fade-enter-from {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.97);
+}
+.phase-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+  max-height: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-width: 0;
+}
+
+@keyframes phaseSlideIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* 文件卡片渐进浮现：骨架屏过渡 */
+.file-card {
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.file-card-enter-active {
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.file-card-enter-from {
+  opacity: 0;
+  transform: translateY(8px) scale(0.95);
 }
 
 /* ---------- 响应式 ---------- */
