@@ -68,7 +68,7 @@ spring:
     max-http-form-post-size: 1MB
 
 server:
-  port: 8123
+  port: 9123  # 8123 被 Windows Hyper-V 动态端口排除范围(8026-8125)占用，改用 9123
   servlet:
     context-path: /api
     encoding:

@@ -3,7 +3,9 @@ package com.light.reactagent.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.light.reactagent.entity.PersonaProfile;
+import com.light.reactagent.entity.User;
 import com.light.reactagent.repository.PersonaProfileRepository;
+import com.light.reactagent.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
@@ -60,11 +62,24 @@ public class PersonaProfileService {
             + "如果某字段无法识别，留空字符串。";
 
     private final PersonaProfileRepository profileRepo;
+    private final UserRepository userRepo;
     private final ChatModel chatModel;
 
-    public PersonaProfileService(PersonaProfileRepository profileRepo, ChatModel chatModel) {
+    public PersonaProfileService(PersonaProfileRepository profileRepo, UserRepository userRepo, ChatModel chatModel) {
         this.profileRepo = profileRepo;
+        this.userRepo = userRepo;
         this.chatModel = chatModel;
+    }
+
+    /**
+     * 根据用户名查找用户 ID（内部辅助）。
+     * 之前的实现错误地将 username 直接 parseLong，导致非数字用户名抛出 NumberFormatException。
+     */
+    private Long findUserIdByUsername(String username) {
+        if (username == null || username.isBlank()) return null;
+        return userRepo.findByUsername(username)
+                .map(User::getId)
+                .orElse(null);
     }
 
     // ==========================================
@@ -73,13 +88,21 @@ public class PersonaProfileService {
 
     /**
      * 取用户画像（不存在时懒建一个默认的）。
+     *
+     * @param username 登录用户名（非数字 ID），内部自动查询对应的 numeric userId
      */
     @Transactional
-    public PersonaProfile getOrCreate(Long userId, String nickname) {
-        return profileRepo.findByUserId(userId).orElseGet(() -> {
+    public PersonaProfile getOrCreate(String username) {
+        Long userId = findUserIdByUsername(username);
+        if (userId == null) {
+            log.warn("[Persona] 用户不存在，无法构建画像：{}", username);
+            return null;
+        }
+        final Long finalUserId = userId;
+        return profileRepo.findByUserId(finalUserId).orElseGet(() -> {
             PersonaProfile p = new PersonaProfile();
-            p.setUserId(userId);
-            p.setNickname(nickname);
+            p.setUserId(finalUserId);
+            p.setNickname(username);
             p.setPreferredLanguage("zh");
             p.setWritingStyle("neutral");
             p.setConversationCount(0);
@@ -99,10 +122,13 @@ public class PersonaProfileService {
      * 读取用户画像的 system context 片段，给 LLM 作为「用户是谁」的提示。
      * <p>
      * 这个片段会作为 SystemMessage 拼到 prompt 头部，所以越精简越好。
+     *
+     * @param username 登录用户名
      */
-    public String buildSystemContext(Long userId, String nickname) {
-        if (userId == null) return "";
-        PersonaProfile p = getOrCreate(userId, nickname);
+    public String buildSystemContext(String username) {
+        if (username == null || username.isBlank()) return "";
+        PersonaProfile p = getOrCreate(username);
+        if (p == null) return "";
         StringBuilder sb = new StringBuilder();
         sb.append("## 关于当前用户的记忆（请据此调整表达方式和深度）\n");
         if (p.getPreferredLanguage() != null && !p.getPreferredLanguage().isBlank()) {
@@ -136,13 +162,16 @@ public class PersonaProfileService {
     /**
      * 记录一次对话（次数 +1，lastActiveAt = now）。
      * 在对话开始时调用。
+     *
+     * @param username 登录用户名
      */
     @Transactional
-    public void touchConversation(Long userId, String nickname) {
-        if (userId == null) return;
-        PersonaProfile p = getOrCreate(userId, nickname);
+    public void touchConversation(String username) {
+        if (username == null || username.isBlank()) return;
+        PersonaProfile p = getOrCreate(username);
+        if (p == null) return;
         p.setConversationCount((p.getConversationCount() == null ? 0 : p.getConversationCount()) + 1);
-        p.setNickname(nickname);
+        p.setNickname(username);
         p.setLastActiveAt(LocalDateTime.now());
         profileRepo.save(p);
     }
@@ -155,15 +184,23 @@ public class PersonaProfileService {
      * - 用独立的 ChatModel 单轮调用（不走流式，节省资源）
      * - techStack / interests 增量 merge（不覆盖），保持「越用越厚」
      * - recent_topics append 前 20
+     *
+     * @param username 登录用户名
      */
     @Async
     @Transactional
-    public void afterConversationAsync(Long userId, String nickname,
+    public void afterConversationAsync(String username,
                                        String userMessage, String assistantMessage) {
-        if (userId == null) return;
+        if (username == null || username.isBlank()) return;
+        // 预查 userId，便于日志输出（画像 p 中已包含 userId，此处仅为日志友好）
+        final Long finalUserId = findUserIdByUsername(username);
         try {
             // 1) 拉现有画像
-            PersonaProfile p = getOrCreate(userId, nickname);
+            PersonaProfile p = getOrCreate(username);
+            if (p == null) {
+                log.warn("[Persona] 异步画像更新失败，用户不存在：{}", username);
+                return;
+            }
 
             // 2) 调 LLM 抽取增量
             Map<String, String> extracted = extractViaLlm(userMessage, assistantMessage);
@@ -205,11 +242,11 @@ public class PersonaProfileService {
                 p.setProfileUpdatedAt(LocalDateTime.now());
                 p.setVersion((p.getVersion() == null ? 0L : p.getVersion()) + 1);
                 profileRepo.save(p);
-                log.debug("[Persona] 画像已更新 userId={}, topics={}", userId, topicSummary);
+                log.debug("[Persona] 画像已更新 userId={}, topics={}", finalUserId, topicSummary);
             }
         } catch (Exception e) {
             // 画像更新失败绝对不能影响主流程
-            log.warn("[Persona] 异步更新画像失败 userId={}, err={}", userId, e.getMessage());
+            log.warn("[Persona] 异步更新画像失败 userId={}, err={}", finalUserId, e.getMessage());
         }
     }
 
