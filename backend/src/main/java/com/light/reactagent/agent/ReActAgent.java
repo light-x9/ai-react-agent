@@ -9,8 +9,10 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * ReAct (Reasoning and Acting) 模式的代理抽象类
@@ -21,8 +23,11 @@ import java.util.Map;
 @Slf4j
 public abstract class ReActAgent extends BaseAgent {
 
+    /** 已推送过 resource 事件的文件 ID 集合 —— 避免 final 事件重复推送 */
+    private final Set<String> emittedResourceIds = new HashSet<>();
+
     /**
-     * 处理当前状态并决定下一步行动
+     * 执行当前状态并决定下一步行动
      *
      * @return 是否需要执行行动，true表示需要执行，false表示不需要执行
      */
@@ -84,9 +89,14 @@ public abstract class ReActAgent extends BaseAgent {
 
             // 3. 执行工具并发送 observation 事件
             String actionResult = act();
-            sb.append("{\"type\":\"observation\",\"summary\":\"")
+            sb.append("{\"type\":\"").append(SseEventTypes.OBSERVATION).append("\",\"summary\":\"")
               .append(escapeJson(actionResult))
               .append("\"}");
+
+            // 3.1 渐进推送本次工具执行产生的新文件（resource 事件）
+            //     机制：检查 FileContextHolder 中新增的 fileId，为每个未推送过的文件追加 resource JSON 行。
+            //     前端收到后立即渲染卡片，无需等到 final 事件。
+            appendNewResourceEvents(sb);
 
             // 4. 如果 act() 触发了 doTerminate（state→FINISHED），补发 final 事件
             //    否则前端只消费 final 事件，会一直停留在「思考中…」
@@ -150,10 +160,47 @@ public abstract class ReActAgent extends BaseAgent {
     }
 
     /**
-     * 将本次请求生成的文件列表以 JSON 数组形式追加到 StringBuilder
+     * 渐进推送本次工具执行新产生的文件作为 resource 事件 JSON 行。
+     * <p>
+     * 每条 resource 独立一行，前端收到后追加到当前消息的 files 数组（若已存在则忽略）。
+     * 参考 edu-agent 的 event:resource 渐进推送模式——文件生成后立即推送，不必等到 done。
+     */
+    private void appendNewResourceEvents(StringBuilder sb) {
+        List<String> fileIds = FileContextHolder.getGeneratedFileIds();
+        if (fileIds.isEmpty()) {
+            return;
+        }
+        FileMetadataManager metadataManager = getMetadataManager();
+        if (metadataManager == null) {
+            return;
+        }
+        String chatId = FileContextHolder.getChatId();
+        for (String fileId : fileIds) {
+            // 跳过已推送过的文件（避免与 final 事件的 files 数组重复）
+            if (!emittedResourceIds.add(fileId)) {
+                continue;
+            }
+            FileMetadata meta = metadataManager.getFile(chatId, fileId);
+            if (meta == null) {
+                continue;
+            }
+            sb.append("\n{\"type\":\"").append(SseEventTypes.RESOURCE)
+              .append("\",\"resourceType\":\"file\"")
+              .append(",\"fileId\":\"").append(meta.getFileId()).append("\"")
+              .append(",\"name\":\"").append(escapeJson(meta.getOriginalName())).append("\"")
+              .append(",\"size\":").append(meta.getSizeBytes())
+              .append(",\"fileType\":\"").append(escapeJson(meta.getExtension())).append("\"")
+              .append("}");
+        }
+    }
+
+    /**
+     * 将本次请求生成的文件列表以 JSON 数组形式追加到 StringBuilder。
      * <p>
      * 输出格式：,"files":[{"fileId":"xxx","name":"report.pdf","size":12345,"type":"pdf"},...]
      * 无文件时不追加任何内容。
+     * <p>
+     * 注意：已通过 resource 事件渐进推送的文件会被排除，避免前端重复渲染。
      */
     private void appendGeneratedFilesJson(StringBuilder sb) {
         List<String> fileIds = FileContextHolder.getGeneratedFileIds();
@@ -169,6 +216,10 @@ public abstract class ReActAgent extends BaseAgent {
         sb.append(",\"files\":[");
         boolean first = true;
         for (String fileId : fileIds) {
+            // 跳过已通过 resource 事件渐进推送的文件
+            if (emittedResourceIds.contains(fileId)) {
+                continue;
+            }
             FileMetadata meta = metadataManager.getFile(chatId, fileId);
             if (meta == null) {
                 continue;

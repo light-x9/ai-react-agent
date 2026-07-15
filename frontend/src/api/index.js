@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const API_BASE_URL = process.env.NODE_ENV === 'production'
   ? '/api'
-  : 'http://localhost:8123/api'
+  : 'http://localhost:9123/api'
 
 const request = axios.create({
   baseURL: API_BASE_URL,
@@ -207,6 +207,22 @@ export const saveMessage = async (conversationId, role, content) => {
 }
 export const renameConversation = async (id, title) => {
   const res = await request.put('/conversation/' + id, { title })
+  return res.data
+}
+
+// ============ 个人画像接口（个人知识引擎） ============
+export const getMyPersona = async () => {
+  const res = await request.get('/ai/persona/me')
+  return res.data
+}
+
+// ============ 多模型路由接口 ============
+export const listModels = async () => {
+  const res = await request.get('/ai/models')
+  return res.data
+}
+export const lockModel = async (modelName) => {
+  const res = await request.post('/ai/models/lock', { modelName: modelName || '' })
   return res.data
 }
 

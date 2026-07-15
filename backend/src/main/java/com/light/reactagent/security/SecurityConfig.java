@@ -13,6 +13,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.http.HttpMethod;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -62,6 +63,8 @@ public class SecurityConfig {
                         "/webjars/**",
                         "/favicon.ico"
                 ).permitAll()
+                // 允许 CORS 预检请求（OPTIONS）通过，不触发认证 —— 关键修复，否则浏览器 cross-origin fetch 被 401 阻断
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .anyRequest().authenticated()
             )
             .exceptionHandling(e -> e

@@ -88,7 +88,8 @@ public class PDFGenerationTool {
                                 "application/pdf",
                                 target.length()
                         );
-                        result += " [fileId=" + fileId + "]";
+                        // 标记里带上文件名，方便前端解析渲染文件卡片
+                        result += " [fileId=" + fileId + " name=" + target.getName() + "]";
                         // 记录到本次请求的文件列表，供 final 事件汇总返回给前端
                         FileContextHolder.recordFileId(fileId);
                     } catch (FileStorageException e) {

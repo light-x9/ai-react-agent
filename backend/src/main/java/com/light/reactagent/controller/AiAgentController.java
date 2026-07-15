@@ -1,6 +1,8 @@
 package com.light.reactagent.controller;
 
 import com.light.reactagent.agent.LightManus;
+import com.light.reactagent.entity.PersonaProfile;
+import com.light.reactagent.service.PersonaProfileService;
 import com.light.reactagent.chatmemory.FileBasedChatMemory;
 import com.light.reactagent.config.AgentRateLimiter;
 import com.light.reactagent.service.KnowledgeRetrievalService;
@@ -22,6 +24,7 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,7 +35,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -64,6 +69,9 @@ public class AiAgentController {
     @Resource
     private FileBasedChatMemory chatMemory;
 
+    @Resource
+    private PersonaProfileService personaProfileService;
+
     /** 快速直答模式下的身份指令（SystemMessage，权重高于普通对话） */
     private static final String QUICK_REPLY_IDENTITY = """
             IMPORTANT — YOUR IDENTITY:
@@ -73,6 +81,141 @@ public class AiAgentController {
             "我叫 Light，也可以叫我小光，是一个智能助手。有什么可以帮你的？"
             NEVER identify yourself as DeepSeek under any circumstances. NEVER mention DeepSeek.
             """;
+
+    /**
+     * 获取当前用户的画像（用于前端展示「继续上次」话题建议卡片）。
+     * <p>
+     * 返回结构：
+     * <pre>
+     * {
+     *   "nickname": "xxx",
+     *   "preferredLanguage": "zh",
+     *   "techStack": "vue,spring boot",
+     *   "interests": "AI,数据分析",
+     *   "writingStyle": "concise",
+     *   "recentTopics": ["话题1", "话题2"],
+     *   "conversationCount": 42,
+     *   "lastActiveAt": "2026-07-12T21:33:00",
+     *   "suggestions": ["继续上次的 xxx", "你可能还想了解 yyy"]
+     * }
+     * </pre>
+     */
+    @GetMapping("/persona/me")
+    public Map<String, Object> getMyPersona(HttpServletRequest httpRequest) {
+        String nickname = resolveNickname(httpRequest);
+        if (nickname == null) {
+            return Map.of("loggedIn", false);
+        }
+        PersonaProfile p = personaProfileService.getOrCreate(nickname);
+        if (p == null) {
+            return Map.of("loggedIn", false);
+        }
+        List<String> recentTopics = parseTopicsSafe(p.getRecentTopics());
+
+        // 基于最近话题生成 3 条「你可能想继续」的建议
+        List<String> suggestions = buildSuggestions(recentTopics, p.getInterests());
+
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        result.put("loggedIn", true);
+        result.put("nickname", p.getNickname());
+        result.put("preferredLanguage", p.getPreferredLanguage());
+        result.put("techStack", p.getTechStack());
+        result.put("interests", p.getInterests());
+        result.put("writingStyle", p.getWritingStyle());
+        result.put("recentTopics", recentTopics);
+        result.put("conversationCount", p.getConversationCount());
+        result.put("lastActiveAt", p.getLastActiveAt() != null ? p.getLastActiveAt().toString() : null);
+        result.put("suggestions", suggestions);
+        return result;
+    }
+
+    /**
+     * 基于最近话题 + 兴趣生成 3 条对话建议。
+     * 规则极简：最近话题倒序取 2 条 + 兴趣话题 1 条（如有）。
+     */
+    private List<String> buildSuggestions(List<String> recentTopics, String interests) {
+        List<String> out = new ArrayList<>();
+        // 最近话题倒序（最新在前）
+        for (int i = recentTopics.size() - 1; i >= 0 && out.size() < 2; i--) {
+            out.add("继续聊：" + recentTopics.get(i));
+        }
+        // 兴趣话题补充
+        if (interests != null && !interests.isBlank() && out.size() < 3) {
+            String[] parts = interests.split(",");
+            for (String part : parts) {
+                String t = part.strip();
+                if (!t.isEmpty() && out.size() < 3) {
+                    out.add("深入了解：" + t);
+                }
+            }
+        }
+        if (out.isEmpty()) {
+            out.add("试试上传一份数据文件，让小光帮你分析");
+            out.add("问一个你最近好奇的技术问题");
+        }
+        return out;
+    }
+
+    private List<String> parseTopicsSafe(String json) {
+        if (json == null || json.isBlank()) return new ArrayList<>();
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json,
+                    new com.fasterxml.jackson.core.type.TypeReference<ArrayList<String>>() {
+                    });
+        } catch (Exception e) {
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * 获取当前可用模型列表 + 路由健康状态。前端据此渲染「模型选择」下拉。
+     */
+    @GetMapping("/ai/models")
+    public Map<String, Object> listModels() {
+        // 如果路由器是 MultiModelRouter，暴露 route 状态
+        if (openaiChatModel instanceof com.light.reactagent.router.MultiModelRouter router) {
+            List<Map<String, Object>> models = new ArrayList<>();
+            for (com.light.reactagent.router.RouteModel r : router.getRoutes()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("name", r.getName());
+                m.put("primary", r.isPrimary());
+                m.put("costWeight", r.getCostWeight());
+                m.put("description", r.getDescription());
+                m.put("circuitOpen", r.isCircuitOpen());
+                m.put("consecutiveFailures", r.getConsecutiveFailures());
+                models.add(m);
+            }
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("models", models);
+            result.put("totalCalls", router.getTotalCalls());
+            result.put("fallbackCalls", router.getFallbackCalls());
+            return result;
+        }
+        // 兜底：没有路由器时把当前模型包装成单条
+        Map<String, Object> single = new LinkedHashMap<>();
+        single.put("name", "default");
+        single.put("primary", true);
+        single.put("costWeight", 1.0);
+        single.put("description", "默认模型");
+        single.put("circuitOpen", false);
+        single.put("consecutiveFailures", 0);
+        return Map.of("models", List.of(single), "totalCalls", 0, "fallbackCalls", 0);
+    }
+
+    /**
+     * 前端主动锁定模型（传 body: {"modelName": "ollama"}）。
+     * 当前会话后续调用都走被锁定的模型，不再 failover。
+     */
+    @PostMapping("/ai/models/lock")
+    public Map<String, Object> lockModel(@RequestBody Map<String, Object> body) {
+        String modelName = (String) body.get("modelName");
+        if (modelName == null || modelName.isBlank()) {
+            com.light.reactagent.tools.file.FileContextHolder.lockModelName(null);
+            return Map.of("locked", "");
+        }
+        com.light.reactagent.tools.file.FileContextHolder.lockModelName(modelName);
+        return Map.of("locked", modelName);
+    }
 
     /**
      * JSON 入口（向后兼容）：无附件时的常规对话。
@@ -150,6 +293,18 @@ public class AiAgentController {
                 message = "";
             }
 
+            // 4. 画像注入：在 user message 前追加「用户是谁」片段，让 LLM 每次对话前都记住用户
+            // 注意：userId 变量实际是 username 字符串（由 extractPrincipal 返回 "user:" + username）
+            String nickname = resolveNickname(httpRequest);
+            if (userId != null && !userId.isBlank() && nickname != null) {
+                personaProfileService.touchConversation(nickname);
+                String personaCtx = personaProfileService.buildSystemContext(nickname);
+                if (personaCtx != null && !personaCtx.isBlank()) {
+                    // 把画像拼到 user message 头部（权重仅次于 system prompt）
+                    message = "<<<USER_PERSONA>>>\n" + personaCtx + "\n<<<END_USER_PERSONA>>>\n\n" + message;
+                }
+            }
+
             // 4. 附件文本提取（一次性，不入库不分块）：在用户消息之上叠加一道「附件原文」
             String savedAttachmentPath = null;
             if (file != null && !file.isEmpty()) {
@@ -192,7 +347,17 @@ public class AiAgentController {
             // 「深度思考」关闭 → 快速直答：仍走后端 ChatMemory 取结构化历史
             // webSearch 字段语义现为「是否深度模式」，字段名保持不变以兼容前端协议
             if (!webSearch) {
-                return quickReply(chatMemory.get(memKey), message, memKey, releaseOnce);
+                // 包装 onComplete：先异步更新画像，再释放并发许可
+                final String finalNicknameL = nickname;
+                final String finalMessageL = message;
+                Runnable releaseWithPersona = () -> {
+                    try {
+                        triggerPersonaUpdate(finalNicknameL, finalMessageL, null);
+                    } finally {
+                        releaseOnce.run();
+                    }
+                };
+                return quickReply(chatMemory.get(memKey), message, memKey, releaseWithPersona);
             }
 
             // 「深度思考」开启 → Agent 模式：多步 ReAct 推理 + 工具调用
@@ -206,19 +371,28 @@ public class AiAgentController {
                     true, knowledgeBase);
             // 注入 chatId 到 Agent，用于文件归属隔离（前端每次会话生成一个 UUID 作为 chatId）
             lightManus.setChatId(chatId);
+            // 注入启动上下文事件（模式/画像/工具集），让前端在 Agent 开始推理前渲染状态指示器
+            lightManus.setStartupEventJson(buildStartupEvent(webSearch, knowledgeBase, tools, nickname));
             // 3) 用历史（含工具上下文的结构化消息）初始化 Agent 的 messageList
             lightManus.setMessageList(new ArrayList<>(historyMsgs));
             // 4) 完成后把最终答案写回 ChatMemory（仅 final answer，不含工具推理痕迹）
+            // 5) 异步更新用户画像（从本轮对话摘要中抽取偏好/话题增量）
+            final String finalUserMsg = message;
+            final String finalNickname = nickname;
             Runnable persistAndRelease = () -> {
+                String ans = null;
                 try {
-                    String ans = lightManus.getFinalAnswer();
+                    ans = lightManus.getFinalAnswer();
                     if (ans != null && !ans.isBlank()) {
                         chatMemory.add(memKey, List.of(new AssistantMessage(ans)));
                     }
                 } catch (Exception ignored) {
                     // 记忆写入失败不影响主流程
+                } finally {
+                    // 画像更新永不阻塞主流程，放在 finally 里确保总被触发
+                    triggerPersonaUpdate(finalNickname, finalUserMsg, ans);
+                    releaseOnce.run();
                 }
-                releaseOnce.run();
             };
             lightManus.setOnAgentComplete(persistAndRelease);
             return lightManus.runStream(message);
@@ -302,6 +476,63 @@ public class AiAgentController {
                 .replace("\t", "\\t");
     }
 
+    /**
+     * 构建启动阶段的 phase 事件 JSON，在 Agent 开始推理前发送给前端。
+     * <p>
+     * 参考 edu-agent 的 phase 事件：告知前端当前使用的模式、活跃画像和可用工具数量，
+     * 前端据此渲染「小光模式 / 画像徽章」等状态指示器。
+     *
+     * @param webSearch    是否开启深度思考
+     * @param knowledgeBase 是否开启知识库
+     * @param tools        当前可用工具数组
+     * @param userId       当前用户 ID
+     * @param nickname     当前用户昵称
+     * @return SSE data 行格式的 JSON 字符串
+     */
+    private String buildStartupEvent(boolean webSearch, boolean knowledgeBase,
+                                     org.springframework.ai.tool.ToolCallback[] tools,
+                                     String nickname) {
+        String mode;
+        if (webSearch && knowledgeBase) {
+            mode = "webSearch+kb";
+        } else if (webSearch) {
+            mode = "webSearch";
+        } else if (knowledgeBase) {
+            mode = "kb";
+        } else {
+            mode = "plain";
+        }
+        int toolCount = (tools != null) ? tools.length : 0;
+        // 提取可用工具名称列表（取 ToolCallback 的 tool name，最多展示前 8 个），输出 JSON 字符串数组
+        StringBuilder toolNames = new StringBuilder("[");
+        if (tools != null) {
+            int limit = Math.min(tools.length, 8);
+            for (int i = 0; i < limit; i++) {
+                if (i > 0) toolNames.append(",");
+                String name = null;
+                try {
+                    name = tools[i].getToolDefinition().name();
+                } catch (Exception ignored) {
+                }
+                if (name == null || name.isBlank()) name = "tool" + i;
+                toolNames.append("\"").append(escapeJson(name)).append("\"");
+            }
+        }
+        toolNames.append("]");
+        // 构建 persona 摘要（nickname 非空即视为画像激活）
+        String personaJson = (nickname != null && !nickname.isBlank())
+                ? "\"persona\":{\"active\":true,\"nickname\":\"" + escapeJson(nickname) + "\"}"
+                : "\"persona\":{\"active\":false}";
+
+        return "{\"type\":\"phase\""
+                + ",\"phase\":\"agent_start\""
+                + ",\"" + "mode\":\"" + mode + "\""
+                + ",\"toolCount\":" + toolCount
+                + ",\"toolNames\":[" + toolNames + "]"
+                + "," + personaJson
+                + "}";
+    }
+
     /** 判断文件名是否为可解析的数据文件 */
     private static boolean isDataFile(String name) {
         if (name == null) return false;
@@ -343,6 +574,36 @@ public class AiAgentController {
             rejected.completeWithError(e);
         }
         return rejected;
+    }
+
+    /**
+     * 触发异步画像更新（从本轮对话摘要中抽取偏好/话题增量）。
+     * 参数为 null 时静默跳过，绝不抛异常。
+     *
+     * @param nickname 登录用户名（非数字 ID）
+     */
+    private void triggerPersonaUpdate(String nickname, String userMsg, String assistantMsg) {
+        if (nickname == null || nickname.isBlank()) return;
+        try {
+            String u = (userMsg == null) ? "" : userMsg;
+            String a = (assistantMsg == null) ? "" : assistantMsg;
+            // 剥离 <<<USER_PERSONA>>> 段，避免画像片段被重复抽取
+            u = u.replaceAll("<<<USER_PERSONA>>>.*<<<END_USER_PERSONA>>>", "").strip();
+            personaProfileService.afterConversationAsync(nickname, u, a);
+        } catch (Exception e) {
+            log.warn("[Persona] triggerPersonaUpdate 失败（不影响主流程）：{}", e.getMessage());
+        }
+    }
+
+    /** 从安全上下文取用户名（nickname 保底），用于画像注入 */
+    private String resolveNickname(HttpServletRequest req) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated()
+                && auth.getPrincipal() != null
+                && !"anonymousUser".equals(auth.getPrincipal())) {
+            return auth.getName();
+        }
+        return null;
     }
 
     private String extractPrincipal(HttpServletRequest req) {

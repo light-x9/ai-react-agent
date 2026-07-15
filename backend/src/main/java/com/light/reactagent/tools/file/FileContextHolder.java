@@ -86,6 +86,27 @@ public class FileContextHolder {
     }
 
     /**
+     * 锁定当前会话使用的模型（用户在前端选择）
+     */
+    public static void lockModelName(String modelName) {
+        Map<String, Object> ctx = CONTEXT.get();
+        if (ctx != null) {
+            ctx.put("lockedModelName", modelName);
+        }
+    }
+
+    /**
+     * 获取当前会话锁定的模型名（由路由器的 selectRoute() 读取）
+     * 未锁定时返回 null。
+     */
+    public static String getLockedModelName() {
+        Map<String, Object> ctx = CONTEXT.get();
+        if (ctx == null) return null;
+        Object val = ctx.get("lockedModelName");
+        return val instanceof String s ? s : null;
+    }
+
+    /**
      * 清理当前线程的上下文（防止线程复用导致泄漏）
      */
     public static void clear() {

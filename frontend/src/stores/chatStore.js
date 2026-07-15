@@ -180,12 +180,18 @@ export const useChatStore = defineStore('chat', {
         isUser,
         type,
         time: Date.now(),
+        // 用展开透传所有 extra 属性，确保 phase / _phaseShowing / resources 等字段不丢失
+        ...extra,
+        // 对可能缺失的字段给默认值，避免下游读取 undefined
         reactCycles: extra.reactCycles || [],
         finalAnswer: extra.finalAnswer || '',
         _cycleIndex: extra._cycleIndex || 0,
         steps: extra.steps || [],
         thinking: extra.thinking || false,
         collapsed: extra.collapsed || false,
+        phase: extra.phase ?? null,
+        _phaseShowing: extra._phaseShowing ?? true,
+        resources: extra.resources || [],
       })
       session.updatedAt = Date.now()
     },

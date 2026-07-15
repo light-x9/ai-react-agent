@@ -1,6 +1,6 @@
 <template>
   <div class="super-agent-container">
-    <SessionSidebar ref="sidebarRef" />
+    <SessionSidebar ref="sidebarRef" @persona-action="handlePersonaAction" />
     <!-- 管理知识库 — 页面右上角 -->
     <button class="header-btn manage-btn" @click="openManageDialog" title="上传 / 管理知识库文档">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -682,6 +682,11 @@ const closeManageDialog = () => {
  * 接入真实后端时，只需替换 runMockReActStream() 为 connectSSE()，
  * 在 onmessage 中根据 event.data 的 type 字段调用对应函数即可。
  */
+const handlePersonaAction = (text) => {
+  // 来自侧边栏画像面板的话题/建议点击 → 直接作为消息发送
+  sendMessage(text)
+}
+
 const sendMessage = async (message, attachmentFile = null) => {
   // 无活跃会话时自动创建（首次发消息、或全部会话被删除后）
   if (!chatStore.activeId) {
@@ -731,7 +736,10 @@ const sendMessage = async (message, attachmentFile = null) => {
     _cycleIndex: 0,
     steps: [],       // 推理步骤序列 [{thought, tool, observation}]
     thinking: false, // 是否正在推理中
-    collapsed: false  // 推理过程是否已折叠（final 到达后设为 true）
+    collapsed: false, // 推理过程是否已折叠（final 到达后设为 true）
+    phase: null,     // phase 事件携带的模式/画像/工具信息
+    _phaseShowing: true, // phase 指示器显示状态（final 到达后设为 false，退场动画后隐藏）
+    resources: []    // 渐进推送的资源卡片列表
   })
 
   connectionStatus.value = 'connecting'
@@ -752,6 +760,15 @@ const sendMessage = async (message, attachmentFile = null) => {
         const msg = chatStore.activeMessages[aiMessageIndex]
         if (!msg) return
         switch (event.type) {
+          case 'phase':
+            // 启动阶段上下文：模式 / 画像 / 工具集信息，用于渲染状态指示器
+            msg.phase = {
+              mode: event.mode || '',
+              toolCount: event.toolCount || 0,
+              toolNames: event.toolNames || [],
+              persona: event.persona || { active: false }
+            }
+            break
           case 'thought':
             // 新一步开始：保存上一步，创建新 step
             if (currentStep && (currentStep.thought || currentStep.tool)) {
@@ -766,6 +783,29 @@ const sendMessage = async (message, attachmentFile = null) => {
             }
             currentStep.tool = event.tool || ''
             msg.thinking = true
+            break
+          case 'resource':
+            // 渐进推送：工具执行中立即产出的文件/图表
+            console.log('[SSE] resource event:', event)
+            // 去重检查（fileId 已渲染过则跳过）
+            if (event.fileId && !msg.resources.some(r => r.fileId === event.fileId)) {
+              msg.resources.push({
+                fileId: event.fileId,
+                name: event.name,
+                size: event.size,
+                fileType: event.fileType
+              })
+              // 同步到 files 数组（兼容 final 事件的 files 消费路径）
+              if (!msg.files) msg.files = []
+              if (!msg.files.some(f => f.fileId === event.fileId)) {
+                msg.files.push({
+                  fileId: event.fileId,
+                  name: event.name,
+                  size: event.size,
+                  type: event.fileType
+                })
+              }
+            }
             break
           case 'observation':
             if (!currentStep) {
@@ -782,13 +822,18 @@ const sendMessage = async (message, attachmentFile = null) => {
             currentStep = null
             msg.content = event.content || ''
             msg.thinking = false
+            msg._phaseShowing = false // 触发 phase 指示器退场动画
             msg.collapsed = true   // 回答完成后默认折叠推理过程
             // 附带的文件列表（后端文件工具生成后通过 final 事件返回）
+            // 注意：resource 事件已渐进推送的文件会通过 msg.files 同步，此处合并去重
             if (event.files && event.files.length > 0) {
-              msg.files = event.files
+              if (!msg.files) msg.files = []
+              for (const f of event.files) {
+                if (!msg.files.some(existing => existing.fileId === f.fileId)) {
+                  msg.files.push(f)
+                }
+              }
             }
-            // 扫描全量文本中的 [CHART_FILE=xxx] 标记（AnalyzeDataTool 产出）
-            attachChartFiles(msg)
             break
           case 'error':
             if (currentStep && (currentStep.thought || currentStep.tool)) {
@@ -799,6 +844,8 @@ const sendMessage = async (message, attachmentFile = null) => {
             msg.thinking = false
             break
         }
+        // 每个事件到达后都扫描一次文件标记（覆盖 observation 里的 [fileId=xxx] 以及 final 的文本）
+        attachChartFiles(msg)
       }
 
       // 关键修复：把本会话 chatId 一并发给后端，否则后端会用自动生成的 UUID 注册文件，
@@ -875,27 +922,72 @@ const sendMessage = async (message, attachmentFile = null) => {
 }
 
 /**
- * 从 AI 消息的全量文本中扫描 [CHART_FILE=<fileId>] 标记，
- * 解析为 msg.chartFiles 数组（{ fileId, title }）， Conversation 组件遇到此数组时渲染 ChartCard。
+ * 从 AI 消息的全量文本中扫描文件标记，解析为可下载的文件列表。
+ * 支持两种标记格式：
+ *   [CHART_FILE=<fileId>]       — AnalyzeDataTool 产出，渲染为 ChartCard
+ *   [fileId=<fileId>]           — PDF / 文件工具产出，渲染为 file-cards 下载卡片
  * 同时把这些标记从 content 主文本里剔除，避免展示冗余的标记文本。
  */
 function attachChartFiles(msg) {
   if (!msg || typeof msg.content !== 'string') return
-  const re = /\[CHART_FILE=([^\]]+)\]/g
-  const found = []
+  let changed = false
+
+  // 1. 扫描 [CHART_FILE=xxx] → msg.chartFiles（图表卡片）
+  const chartRe = /\[CHART_FILE=([^\]]+)\]/g
   let m
-  while ((m = re.exec(msg.content)) !== null) {
-    found.push({ fileId: m[1], title: '数据图表' })
-  }
-  if (found.length > 0) {
-    // 去重（同一 fileId 不重复渲染）
+  while ((m = chartRe.exec(msg.content)) !== null) {
+    const fileId = m[1]
     const existing = new Set((msg.chartFiles || []).map(f => f.fileId))
-    const toAdd = found.filter(f => !existing.has(f.fileId))
-    if (toAdd.length > 0) {
-      msg.chartFiles = [...(msg.chartFiles || []), ...toAdd]
+    if (!existing.has(fileId)) {
+      msg.chartFiles = [...(msg.chartFiles || []), { fileId, title: '数据图表' }]
     }
-    // 从正文里剥离标记（以及前面出现的可疑 “已生成图表配置文件” 等提示行）
+  }
+  if (/\[CHART_FILE=[^\]]+\]/.test(msg.content)) {
     msg.content = msg.content.replace(/\[CHART_FILE=[^\]]+\]/g, '').trim()
+    changed = true
+  }
+
+  // 2. 扫描 [fileId=xxx] 或 [fileId=xxx name=xxx.pdf] → msg.files（通用文件下载卡片）
+  const fileRe = /\[fileId=([^\]\s]+)(?:\s+name=([^\]]+))?\]/g
+  while ((m = fileRe.exec(msg.content)) !== null) {
+    const fileId = m[1]
+    const markerName = m[2] // 标记里携带的文件名（可选）
+    // 去重
+    if ((msg.files || []).some(f => f.fileId === fileId)) continue
+    if ((msg.chartFiles || []).some(f => f.fileId === fileId)) continue
+    // 确定文件名：优先用标记里的 name，其次从上下文推断，最后降级为「下载文件」
+    let fileName = markerName || '下载文件'
+    if (!markerName) {
+      const exts = ['pdf', 'md', 'txt', 'json', 'csv', 'xlsx', 'docx', 'zip', 'png', 'jpg']
+      const beforeText = msg.content.substring(0, m.index)
+      for (const ext of exts) {
+        const nameMatch = beforeText.match(new RegExp('([\\w\\u4e00-\\u9fff\\-]+)\\.' + ext + '\\b', 'i'))
+        if (nameMatch) {
+          fileName = nameMatch[1] + '.' + ext
+          break
+        }
+      }
+    }
+    if (!msg.files) msg.files = []
+    const fileExt = fileName.split('.').pop() || 'file'
+    msg.files.push({
+      fileId,
+      name: fileName,
+      size: 0,
+      type: fileExt
+    })
+    changed = true
+  }
+  if (/\[fileId=[^\]]+\]/.test(msg.content)) {
+    msg.content = msg.content.replace(/\s*\[fileId=[^\]]+(?:\s+name=[^\]]+)?\]/g, '').trim()
+    changed = true
+  }
+  if (changed) {
+    console.log('[attachChartFiles] 扫描完成:', {
+      chartFiles: msg.chartFiles,
+      files: msg.files,
+      contentPreview: msg.content?.substring(0, 200)
+    })
   }
 }
 
