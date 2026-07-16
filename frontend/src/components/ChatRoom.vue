@@ -83,6 +83,11 @@
                     <span v-if="connectionStatus === 'connecting' && index === messages.length - 1 && !msg.thinking" class="typing-indicator">▋</span>
                   </div>
                 </div>
+                <!-- 图片搜索结果画廊：AI 调用图片搜索工具后展示 -->
+                <ImageGallery
+                  v-if="msg.images && msg.images.length > 0"
+                  :images="msg.images"
+                />
               </div>
               <div class="message-time">{{ formatTime(msg.time) }}</div>
               <!-- 对话生成的图表卡片（AnalyzeDataTool 产出 [CHART_FILE=...] 标记时渲染） -->
@@ -270,6 +275,7 @@ import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
 import AiAvatarFallback from './AiAvatarFallback.vue'
 import ReActSteps from './ReActSteps.vue'
 import ChartCard from './ChartCard.vue'
+import ImageGallery from './ImageGallery.vue'
 import { downloadFile as downloadFileApi } from '@/api'
 import { stripMarkdown } from '@/utils/markdown'
 import { renderMarkdown } from '@/utils/markdown-render'
