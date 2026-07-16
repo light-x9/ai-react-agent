@@ -71,6 +71,8 @@ export const useChatStore = defineStore('chat', {
             messages: [],
             _loaded: false,
             updatedAt: s.updatedAt,
+            favorite: s.favorite || false,
+            pinned: s.pinned || false,
             capability: 'chat', // 从后端加载的会话默认为普通对话类型
           }))
           this.activeId = this.sessions[0].id

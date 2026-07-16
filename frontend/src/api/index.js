@@ -210,6 +210,16 @@ export const renameConversation = async (id, title) => {
   return res.data
 }
 
+export const toggleFavorite = async (id) => {
+  const res = await request.patch('/conversation/' + id + '/favorite')
+  return res.data
+}
+
+export const togglePin = async (id) => {
+  const res = await request.patch('/conversation/' + id + '/pin')
+  return res.data
+}
+
 // ============ 个人画像接口（个人知识引擎） ============
 export const getMyPersona = async () => {
   const res = await request.get('/ai/persona/me')

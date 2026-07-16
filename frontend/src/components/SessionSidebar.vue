@@ -68,6 +68,7 @@
 
         <!-- 标题 / 重命名编辑框 -->
         <span v-if="renamingId !== s.id" class="session-title" :title="s.title || '新对话'">
+          <svg v-if="s.pinned" class="pin-icon" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L12 22" /><path d="M5 9.5L19 9.5" /><path d="M8 9.5V16H16V9.5" /><path d="M12 2L5 9.5H19L12 2Z" /></svg>
           {{ s.title || '新对话' }}
         </span>
         <input
@@ -83,6 +84,16 @@
 
         <!-- hover 操作按钮 -->
         <span v-if="renamingId !== s.id" class="session-actions">
+          <button class="session-action-btn" :class="{ active: s.pinned }" @click.stop="handleTogglePin(s)" title="置顶">
+            <svg width="13" height="13" viewBox="0 0 24 24" :fill="s.pinned ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L12 22" /><path d="M5 9.5L19 9.5" /><path d="M8 9.5V16H16V9.5" /><path d="M12 2L5 9.5H19L12 2Z" />
+            </svg>
+          </button>
+          <button class="session-action-btn" :class="{ active: s.favorite }" @click.stop="handleToggleFavorite(s)" title="收藏">
+            <svg width="13" height="13" viewBox="0 0 24 24" :fill="s.favorite ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+          </button>
           <button class="session-action-btn" @click.stop="startRename(s)" title="重命名">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 20h9" />
@@ -174,13 +185,22 @@
         <div class="user-box">
           <span class="user-avatar">{{ (userStore.username || 'U').charAt(0).toUpperCase() }}</span>
           <span class="user-name">{{ userStore.username }}</span>
-          <button class="logout-btn" @click="logout" title="登出">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-          </button>
+          <!-- 操作按钮：hover 时浮出 -->
+          <div class="user-actions">
+            <router-link to="/user" class="user-action-btn" title="个人中心">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </router-link>
+            <button class="user-action-btn" @click="logout" title="退出登录">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <polyline points="16 17 21 12 16 7" />
+                <line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -216,7 +236,7 @@ import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chatStore'
 import { useUserStore } from '@/stores/userStore'
-import { getUsageToday, getMyPersona } from '@/api'
+import { getUsageToday, getMyPersona, toggleFavorite, togglePin } from '@/api'
 
 const router = useRouter()
 const chatStore = useChatStore()
@@ -373,6 +393,22 @@ const doDelete = async () => {
   } finally {
     deleting.value = false
     deleteTarget.value = null
+  }
+}
+
+// 切换收藏
+const handleToggleFavorite = async (s) => {
+  const res = await toggleFavorite(s.id)
+  if (res.success) {
+    s.favorite = res.favorite
+  }
+}
+
+// 切换置顶
+const handleTogglePin = async (s) => {
+  const res = await togglePin(s.id)
+  if (res.success) {
+    s.pinned = res.pinned
   }
 }
 
@@ -565,6 +601,12 @@ defineExpose({ refreshUsage })
   flex-shrink: 0;
 }
 
+.pin-icon {
+  flex-shrink: 0;
+  margin-right: 2px;
+  color: var(--accent);
+  vertical-align: middle;
+}
 .session-title {
   flex: 1;
   font-size: 0.8125rem;
@@ -612,6 +654,9 @@ defineExpose({ refreshUsage })
 .session-action-btn:hover {
   color: var(--accent);
   background: var(--accent-soft);
+}
+.session-action-btn.active {
+  color: var(--accent);
 }
 .session-action-btn.session-delete:hover {
   color: #dc2626;
@@ -872,6 +917,40 @@ defineExpose({ refreshUsage })
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.user-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  /* 默认隐藏，hover .user-section 时浮出（与 usage-box 同步） */
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-width 0.25s ease, opacity 0.2s ease;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+.user-section:hover .user-actions,
+.user-section:focus-within .user-actions {
+  max-width: 80px;
+  opacity: 1;
+  pointer-events: auto;
+}
+.user-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  transition: color 0.2s, background 0.2s;
+  flex-shrink: 0;
+  text-decoration: none;
+}
+.user-action-btn:hover {
+  color: var(--accent);
+  background: var(--accent-bg);
+}
 .logout-btn {
   display: flex;
   align-items: center;
@@ -984,7 +1063,20 @@ defineExpose({ refreshUsage })
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 /* ---------- 响应式 ---------- */
+/*
+ * 注意：≤768px 下的侧边栏抽屉定位由父组件 SuperAgent.vue 通过 :deep() 控制，
+ * 这里只处理抽屉内部的滚动/布局微调，不再重复定义定位。
+ */
 @media (max-width: 768px) {
-  .session-sidebar { width: 220px; }
+  /* 移动端打开的侧边栏内，会话列表保持可滚动 */
+  .session-list { padding: 6px; }
+  /* hover 浮出操作按钮在移动端改为常驻显示（触屏无 hover） */
+  .session-actions { display: flex; opacity: 0.6; }
+  .session-actions .session-action-btn { width: 28px; height: 28px; }
+}
+
+@media (max-width: 480px) {
+  .sidebar-header { padding: 10px; }
+  .user-box { padding: 4px 2px; }
 }
 </style>
