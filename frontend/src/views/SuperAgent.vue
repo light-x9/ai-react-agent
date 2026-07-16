@@ -268,6 +268,72 @@ import { useUserStore } from '@/stores/userStore'
 const USE_MOCK = false  // true=Mock演示, false=真实后端（测试表格渲染时改为 true）
 const userStore = useUserStore()
 
+/**
+ * 从 final 回答 HTML 中移除已通过 image 事件展示的图片（去重）。
+ * 解析 HTML 中的 <img> 标签 / 指向图片 URL 的 <a> 链接 / 图片编号列表，
+ * 若 src/href 在 renderedImageUrls 集合中或匹配图片链接模式则整条标签移除。
+ * @param {string} html - final 回答的 HTML 内容（markdown 渲染后的）
+ * @param {Set<string>} urlSet - 已渲染的图片 URL 集合
+ * @returns {string} 去重后的 HTML
+ */
+function removeDuplicateImages(html, urlSet) {
+  if (!urlSet || urlSet.size === 0) return html
+  // 使用 DOMParser 解析 HTML，安全遍历节点
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(html, 'text/html')
+
+  // 1. 移除已通过画廊展示的图片（避免重复渲染）
+  const imgs = doc.querySelectorAll('img')
+  imgs.forEach(img => {
+    const src = img.getAttribute('src')
+    if (src && urlSet.has(src)) {
+      // 移除整个 img 标签（包括可能的父级 <a> 包装）
+      const parent = img.parentElement
+      if (parent && parent.tagName === 'A' && parent.children.length === 1) {
+        parent.remove()
+      } else {
+        img.remove()
+      }
+    }
+  })
+
+  // 2. 清理残留的空链接和图片相关链接（模型不听话时生成的 [点击查看](url) 等）
+  doc.querySelectorAll('a').forEach(a => {
+    const href = a.getAttribute('href')
+    if (!href || href.trim() === '' || href === '#') {
+      a.remove()
+      return
+    }
+    // 清理指向已展示图片 URL 的链接
+    if (urlSet.has(href)) {
+      a.remove()
+      return
+    }
+    // 清理指向任何 Pexels 域名的链接（模型用 [点击查看](pexels_url) 格式）
+    // 覆盖：images.pexels.com(CDN图) / www.pexels.com(页面) / pexels.com
+    if (/pexels\.com/.test(href)) {
+      a.remove()
+      return
+    }
+  })
+
+  // 3. 清理只包含图片链接的列表项（模型生成 "1. 小狗图片 1 🖼 [点击查看]" 等编号列表）
+  doc.querySelectorAll('li').forEach(li => {
+    const text = li.textContent.trim()
+    // 匹配模式：包含 "图片" + 数字编号 + 可选的 emoji/链接文字
+    if (/^\d+[\.\、\s].*(图片|张|photo).*[点击查看|🖼|点击]/.test(text)) {
+      li.remove()
+    }
+  })
+
+  // 4. 清理空的 <ul>/<ol>
+  doc.querySelectorAll('ul, ol').forEach(list => {
+    if (list.children.length === 0) list.remove()
+  })
+
+  return doc.body.innerHTML
+}
+
 
 useHead({
   title: '超级智能体 - YuPi AI',
@@ -754,7 +820,8 @@ const sendMessage = async (message, attachmentFile = null) => {
     collapsed: false, // 推理过程是否已折叠（final 到达后设为 true）
     phase: null,     // phase 事件携带的模式/画像/工具信息
     _phaseShowing: true, // phase 指示器显示状态（final 到达后设为 false，退场动画后隐藏）
-    resources: []    // 渐进推送的资源卡片列表
+    resources: [],   // 渐进推送的资源卡片列表
+    images: []       // 渐进推送的图片搜索结果画廊
   })
 
   connectionStatus.value = 'connecting'
@@ -771,6 +838,14 @@ const sendMessage = async (message, attachmentFile = null) => {
        * 实时展示推理过程（思考→调工具→观察结果），final 到达后折叠为一行。
        */
       let currentStep = null
+
+      /**
+       * 当前轮次已渲染的图片 URL 集合 —— 防止模型在 final 中用 ![]() 重复引用已展示的图片。
+       * 图片 URL 去重：SSE image 事件推送的 URL + final 文本中解析的 URL 都在此跟踪。
+       * 注意：此为单轮级（非会话级），每轮发送消息时新建，避免跨轮误杀相同关键词的搜索结果。
+       */
+      const renderedImageUrls = new Set()
+
       const handleStructuredEvent = (event) => {
         const msg = chatStore.activeMessages[aiMessageIndex]
         if (!msg) return
@@ -829,13 +904,34 @@ const sendMessage = async (message, attachmentFile = null) => {
             currentStep.observation = event.summary || ''
             msg.thinking = true
             break
+          case 'image':
+            // 渐进推送：工具执行中检索到的图片元数据
+            // 去重检查（URL 已渲染过则跳过），按消息隔离（currentMsg 是新的）
+            if (!msg.images) msg.images = []
+            if (Array.isArray(event.images)) {
+              for (const img of event.images) {
+                const key = img.url || img.thumbnailUrl
+                if (key && !renderedImageUrls.has(key)) {
+                  renderedImageUrls.add(key)
+                  msg.images.push({
+                    url: img.url,
+                    thumbnailUrl: img.thumbnailUrl,
+                    width: img.width,
+                    height: img.height,
+                    alt: img.alt || '',
+                  })
+                }
+              }
+            }
+            break
           case 'final':
             // 保存最后一步
             if (currentStep && (currentStep.thought || currentStep.tool)) {
               msg.steps.push(currentStep)
             }
             currentStep = null
-            msg.content = event.content || ''
+            // 去重：移除 final 文本中已通过 image 事件展示的图片（避免重复渲染）
+            msg.content = removeDuplicateImages(event.content || '', renderedImageUrls)
             msg.thinking = false
             msg._phaseShowing = false // 触发 phase 指示器退场动画
             msg.collapsed = true   // 回答完成后默认折叠推理过程
@@ -888,9 +984,14 @@ const sendMessage = async (message, attachmentFile = null) => {
           connectionStatus.value = 'disconnected'
           if (eventSource) { eventSource.close(); eventSource = null }
           // 持久化最终回答（结构化模式下 content 存的是 final 文本）
-          const content = chatStore.activeMessages[aiMessageIndex]?.content || ''
-          if (content) {
-            await chatStore.persistMessage('assistant', content, lockedSessionId)
+          // 如果有图片，将 images 数据以 HTML 注释嵌入 content 末尾，供历史加载时重建画廊
+          const persistMsg = chatStore.activeMessages[aiMessageIndex]
+          let persistContent = persistMsg?.content || ''
+          if (persistContent && persistMsg?.images && persistMsg.images.length > 0) {
+            persistContent = persistContent + '\n<!-- IMAGES:' + JSON.stringify(persistMsg.images) + ' -->'
+          }
+          if (persistContent) {
+            await chatStore.persistMessage('assistant', persistContent, lockedSessionId)
           }
           if (sidebarRef.value) await sidebarRef.value.refreshUsage()
           await checkQuota()
@@ -923,11 +1024,15 @@ const sendMessage = async (message, attachmentFile = null) => {
       // 异常断开：尝试保存已收到的内容
       async () => {
         const msg = chatStore.activeMessages[aiMessageIndex]
-        const content = msg?.content || ''
+        let content = msg?.content || ''
         // content 为空或仍是初始占位符「思考中…」→ 没收到任何有效回答，显示错误提示而非存占位符
         if (!content || content === '思考中…') {
           if (msg) msg.content = '连接失败，请检查后端是否已启动或登录状态是否有效。'
         } else {
+          // 如果有图片，将 images 数据以 HTML 注释嵌入 content 末尾，供历史加载时重建画廊
+          if (msg?.images && msg.images.length > 0) {
+            content = content + '\n<!-- IMAGES:' + JSON.stringify(msg.images) + ' -->'
+          }
           await chatStore.persistMessage('assistant', content, lockedSessionId)
         }
         connectionStatus.value = 'disconnected'

@@ -146,15 +146,29 @@ export const useChatStore = defineStore('chat', {
       try {
         const res = await getMessages(id)
         if (res.success && res.messages) {
-          session.messages = res.messages.map(m => ({
-            content: m.content,
-            isUser: m.role === 'user',
-            type: m.role === 'system' ? 'system' : '',
-            time: m.createdAt,
-            reactCycles: [],
-            finalAnswer: '',
-            _cycleIndex: 0,
-          }))
+          session.messages = res.messages.map(m => {
+            let content = m.content || ''
+            let images = []
+            // 解析嵌入在 content 末尾的图片数据标记，重建图片画廊
+            // 标记格式：<!-- IMAGES:[{url,thumbnailUrl,width,height,alt},...] -->
+            const imgMatch = content.match(/<!-- IMAGES:(\[[\s\S]+?\]) -->\s*$/)
+            if (imgMatch) {
+              try {
+                images = JSON.parse(imgMatch[1])
+                content = content.replace(/<!-- IMAGES:\[[\s\S]+?\] -->\s*$/, '').trim()
+              } catch (_) { /* 解析失败忽略，content 保持原样 */ }
+            }
+            return {
+              content,
+              isUser: m.role === 'user',
+              type: m.role === 'system' ? 'system' : '',
+              time: m.createdAt,
+              images,
+              reactCycles: [],
+              finalAnswer: '',
+              _cycleIndex: 0,
+            }
+          })
           session._loaded = true
         }
       } catch (e) {
@@ -207,6 +221,7 @@ export const useChatStore = defineStore('chat', {
         phase: extra.phase ?? null,
         _phaseShowing: extra._phaseShowing ?? true,
         resources: extra.resources || [],
+        images: extra.images || [],
       })
       session.updatedAt = Date.now()
     },
