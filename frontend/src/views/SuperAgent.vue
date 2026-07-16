@@ -855,8 +855,9 @@ const sendMessage = async (message, attachmentFile = null) => {
               msg.steps.push(currentStep)
             }
             currentStep = null
-            msg.content = '错误：' + (event.content || '未知错误')
             msg.thinking = false
+            // 兜底：显示友好错误提示
+            msg.content = '抱歉，处理您的请求时出现问题：' + (event.content || '服务暂时不可用，请稍后重试。如果问题持续存在，请检查网络连接或联系管理员。')
             break
         }
         // 每个事件到达后都扫描一次文件标记（覆盖 observation 里的 [fileId=xxx] 以及 final 的文本）

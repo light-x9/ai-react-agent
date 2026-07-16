@@ -32,7 +32,7 @@
       <div
         v-for="s in chatStore.sessions"
         :key="s.id"
-        :class="['session-item', `cap-${s.capability || 'chat'}`, { active: String(s.id) === String(chatStore.activeId) }]"
+        :class="['session-item', `cap-${s.capability || 'chat'}`, { active: String(s.id) === String(chatStore.activeId), pinned: s.pinned }]"
         @click="selectSession(s.id)"
       >
         <!-- 激活高亮色带 -->
@@ -236,7 +236,7 @@ import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '@/stores/chatStore'
 import { useUserStore } from '@/stores/userStore'
-import { getUsageToday, getMyPersona, toggleFavorite, togglePin } from '@/api'
+import { getUsageToday, getMyPersona } from '@/api'
 
 const router = useRouter()
 const chatStore = useChatStore()
@@ -397,19 +397,15 @@ const doDelete = async () => {
 }
 
 // 切换收藏
-const handleToggleFavorite = async (s) => {
-  const res = await toggleFavorite(s.id)
-  if (res.success) {
-    s.favorite = res.favorite
-  }
+const handleToggleFavorite = (s) => {
+  console.log('[DEBUG] handleToggleFavorite clicked, id:', s.id, 'current:', s.favorite)
+  chatStore.toggleFavorite(s.id)
 }
 
 // 切换置顶
-const handleTogglePin = async (s) => {
-  const res = await togglePin(s.id)
-  if (res.success) {
-    s.pinned = res.pinned
-  }
+const handleTogglePin = (s) => {
+  console.log('[DEBUG] handleTogglePin clicked, id:', s.id, 'current:', s.pinned)
+  chatStore.togglePin(s.id)
 }
 
 // 开始重命名
@@ -561,6 +557,20 @@ defineExpose({ refreshUsage })
 }
 .session-item.active .active-bar {
   background: var(--accent);
+}
+
+/* 置顶会话：明显左侧边框 + 底部分隔线，与普通会话视觉隔离 */
+.session-item.pinned {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-bg);
+  position: relative;
+}
+/* 置顶组最后一个 item：加大底部间距，与下方普通会话拉开距离 */
+.session-item.pinned:not(:last-child) {
+  margin-bottom: 2px;
+}
+.session-item.pinned + .session-item:not(.pinned) {
+  margin-top: 12px;
 }
 
 /* 会话类型图标（带底色圆形） */

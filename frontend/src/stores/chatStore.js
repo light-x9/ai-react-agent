@@ -5,7 +5,9 @@ import {
   deleteConversation,
   getMessages,
   saveMessage,
-  renameConversation
+  renameConversation,
+  toggleFavorite,
+  togglePin
 } from '@/api'
 
 /**
@@ -75,6 +77,11 @@ export const useChatStore = defineStore('chat', {
             pinned: s.pinned || false,
             capability: 'chat', // 从后端加载的会话默认为普通对话类型
           }))
+          // 确保排序正确：置顶优先 → 更新时间倒序
+          this.sessions.sort((a, b) => {
+            if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+            return new Date(b.updatedAt) - new Date(a.updatedAt)
+          })
           this.activeId = this.sessions[0].id
           await this.loadMessages(this.activeId)
         } else {
@@ -103,7 +110,13 @@ export const useChatStore = defineStore('chat', {
             capability, // 会话能力类型（用于侧边栏图标区分）
           }
           // capability 不持久化，仅当前页面生命周期有效
-          this.sessions.unshift(session)
+          // 插入到置顶组之后（如果有置顶的话）
+          const firstUnpinnedIndex = this.sessions.findIndex(s => !s.pinned)
+          if (firstUnpinnedIndex === -1) {
+            this.sessions.push(session) // 全是置顶，追加末尾
+          } else {
+            this.sessions.splice(firstUnpinnedIndex, 0, session)
+          }
           this.activeId = res.id
           return res.id
         }
@@ -247,6 +260,43 @@ export const useChatStore = defineStore('chat', {
       const session = this.sessions.find(s => String(s.id) === String(id))
       if (session) {
         session.capability = capability
+      }
+    },
+
+    /**
+     * 切换收藏状态（调用后端 + 更新本地）
+     */
+    async toggleFavorite(id) {
+      const session = this.sessions.find(s => String(s.id) === String(id))
+      if (!session) return
+      try {
+        const res = await toggleFavorite(id)
+        if (res.success) {
+          session.favorite = res.favorite
+        }
+      } catch (e) {
+        console.error('toggleFavorite failed', e)
+      }
+    },
+
+    /**
+     * 切换置顶状态（调用后端 + 更新本地 + 重新排序）
+     */
+    async togglePin(id) {
+      const session = this.sessions.find(s => String(s.id) === String(id))
+      if (!session) return
+      try {
+        const res = await togglePin(id)
+        if (res.success) {
+          session.pinned = res.pinned
+          // 置顶/取消置顶后重新排序：置顶优先 → 更新时间倒序
+          this.sessions.sort((a, b) => {
+            if (a.pinned !== b.pinned) return a.pinned ? -1 : 1
+            return new Date(b.updatedAt) - new Date(a.updatedAt)
+          })
+        }
+      } catch (e) {
+        console.error('togglePin failed', e)
       }
     },
 
