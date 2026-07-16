@@ -16,14 +16,14 @@
     <svg v-else viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" class="avatar-svg">
       <defs>
         <linearGradient id="agent-grad" x1="0" y1="0" x2="40" y2="40" gradientUnits="userSpaceOnUse">
-          <stop stop-color="#3b82f6" />
+          <stop stop-color="#60a5fa" />
           <stop offset="1" stop-color="#2563eb" />
         </linearGradient>
       </defs>
+      <!-- 圆形底色 -->
       <circle cx="20" cy="20" r="20" fill="url(#agent-grad)" />
-      <circle cx="20" cy="20" r="14" fill="white" fill-opacity="0.15" />
-      <circle cx="20" cy="20" r="6" fill="white" opacity="0.9" />
-      <circle cx="20" cy="20" r="2" fill="#2563eb" />
+      <!-- 中心白色"L"字母（Light） -->
+      <path d="M15 13h4v10h7v4H15V13z" fill="white" />
     </svg>
   </div>
 </template>

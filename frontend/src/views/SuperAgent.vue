@@ -22,7 +22,6 @@
             <circle cx="16" cy="16" r="3.5" stroke="#2563eb" stroke-width="1.2" fill="none" opacity="0.45" />
           </svg>
         </div>
-        <span class="brand-word">LightManus</span>
       </div>
       <div class="header-center">
         <span class="title">{{ currentSessionTitle }}</span>
