@@ -3,8 +3,8 @@ package com.light.reactagent.controller;
 import com.light.reactagent.entity.User;
 import com.light.reactagent.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,11 +28,20 @@ public class UserController {
     private static final Pattern URL_PATTERN = Pattern.compile("^https?://.+");
 
     /**
+     * 从 SecurityContext 获取当前用户名（JWT 过滤器写入的是 username 字符串）
+     */
+    private String currentUsername() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        return auth != null ? auth.getName() : null;
+    }
+
+    /**
      * 获取当前用户信息
      */
     @GetMapping("/profile")
-    public Map<String, Object> getProfile(@AuthenticationPrincipal UserDetails userDetails) {
-        User user = userRepository.findByUsername(userDetails.getUsername()).orElse(null);
+    public Map<String, Object> getProfile() {
+        String username = currentUsername();
+        User user = userRepository.findByUsername(username).orElse(null);
         if (user == null) {
             return Map.of("success", false, "message", "用户不存在");
         }
@@ -50,9 +59,9 @@ public class UserController {
      * 更新昵称 / 头像 / 简介
      */
     @PutMapping("/profile")
-    public Map<String, Object> updateProfile(@AuthenticationPrincipal UserDetails userDetails,
-                                             @RequestBody UpdateProfileRequest req) {
-        User user = userRepository.findByUsername(userDetails.getUsername()).orElse(null);
+    public Map<String, Object> updateProfile(@RequestBody UpdateProfileRequest req) {
+        String username = currentUsername();
+        User user = userRepository.findByUsername(username).orElse(null);
         if (user == null) {
             return Map.of("success", false, "message", "用户不存在");
         }
@@ -95,8 +104,7 @@ public class UserController {
      * 修改密码（需校验原密码）
      */
     @PutMapping("/password")
-    public Map<String, Object> changePassword(@AuthenticationPrincipal UserDetails userDetails,
-                                              @RequestBody ChangePasswordRequest req) {
+    public Map<String, Object> changePassword(@RequestBody ChangePasswordRequest req) {
         // 新密码强度校验
         if (req.newPassword() == null || req.newPassword().length() < 6) {
             return Map.of("success", false, "message", "新密码至少 6 位");
@@ -105,7 +113,8 @@ public class UserController {
             return Map.of("success", false, "message", "新密码不能超过 64 位");
         }
 
-        User user = userRepository.findByUsername(userDetails.getUsername()).orElse(null);
+        String username = currentUsername();
+        User user = userRepository.findByUsername(username).orElse(null);
         if (user == null) {
             return Map.of("success", false, "message", "用户不存在");
         }
