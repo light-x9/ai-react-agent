@@ -46,15 +46,17 @@ public class ConversationController {
     }
 
     /**
-     * 当前用户的会话列表（按更新时间倒序）
+     * 当前用户的会话列表（置顶优先 → 按更新时间倒序）
      */
     @GetMapping
     public Map<String, Object> list() {
         String userId = currentUserId();
-        List<Conversation> list = conversationRepository.findByUserIdOrderByUpdatedAtDesc(userId);
+        List<Conversation> list = conversationRepository.listByUser(userId);
         List<Map<String, Object>> items = list.stream().map(c -> Map.<String, Object>of(
                 "id", c.getId(),
                 "title", c.getTitle(),
+                "favorite", c.isFavorite(),
+                "pinned", c.isPinned(),
                 "updatedAt", c.getUpdatedAt().toString()
         )).toList();
         return Map.of("success", true, "sessions", items);
@@ -160,6 +162,36 @@ public class ConversationController {
         c.setTitle(req.title().trim());
         conversationRepository.save(c);
         return Map.of("success", true, "title", c.getTitle());
+    }
+
+    /**
+     * 切换收藏状态
+     */
+    @PatchMapping("/{id}/favorite")
+    public Map<String, Object> toggleFavorite(@PathVariable Long id) {
+        String userId = currentUserId();
+        Conversation c = conversationRepository.findById(id).orElse(null);
+        if (c == null || !userId.equals(c.getUserId())) {
+            return Map.of("success", false, "message", "会话不存在或无权限");
+        }
+        c.setFavorite(!c.isFavorite());
+        conversationRepository.save(c);
+        return Map.of("success", true, "favorite", c.isFavorite());
+    }
+
+    /**
+     * 切换置顶状态
+     */
+    @PatchMapping("/{id}/pin")
+    public Map<String, Object> togglePin(@PathVariable Long id) {
+        String userId = currentUserId();
+        Conversation c = conversationRepository.findById(id).orElse(null);
+        if (c == null || !userId.equals(c.getUserId())) {
+            return Map.of("success", false, "message", "会话不存在或无权限");
+        }
+        c.setPinned(!c.isPinned());
+        conversationRepository.save(c);
+        return Map.of("success", true, "pinned", c.isPinned());
     }
 
     private String currentUserId() {

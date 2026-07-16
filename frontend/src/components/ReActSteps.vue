@@ -125,13 +125,14 @@
       <div class="final-divider">
         <span>最终回答</span>
       </div>
-      <div class="final-content">{{ stripMarkdown(finalAnswer) }}</div>
+      <div class="final-content md-content" v-html="renderMarkdown(finalAnswer)"></div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { stripMarkdown } from '@/utils/markdown'
+import { renderMarkdown } from '@/utils/markdown-render'
 
 // ReActSteps — 接收结构化推理数据并渲染时间线
 // 仅做展示，不含业务逻辑
@@ -464,6 +465,30 @@ const formatJson = (val) => {
   border-radius: 10px;
   border-left: 3px solid var(--accent);
 }
+
+/* Markdown render styles (v-html) */
+.final-content.md-content { white-space: normal; }
+.final-content.md-content > :deep(:first-child) { margin-top: 0; }
+.final-content.md-content > :deep(:last-child) { margin-bottom: 0; }
+.final-content.md-content :deep(p) { margin: 0 0 12px; line-height: 1.75; }
+
+/* strong: same as normal text */
+.final-content.md-content :deep(strong),
+.final-content.md-content :deep(b) { font-weight: inherit; color: inherit; }
+
+/* ul: remove bullet, add custom marker */
+.final-content.md-content :deep(ul) { list-style: none; padding-left: 0; margin: 0 0 12px; }
+.final-content.md-content :deep(ul) :deep(li) { margin-bottom: 8px; line-height: 1.8; padding-left: 18px; position: relative; }
+.final-content.md-content :deep(ul) :deep(li)::before { content: ""; position: absolute; left: 0; top: 10px; width: 6px; height: 6px; background: var(--accent); border-radius: 2px; }
+
+/* ol: keep native numbers */
+.final-content.md-content :deep(ol) { padding-left: 1.5em; margin: 0 0 12px; }
+.final-content.md-content :deep(ol) :deep(li) { margin-bottom: 8px; line-height: 1.8; }
+
+/* nested lists */
+.final-content.md-content :deep(li) :deep(ul),
+.final-content.md-content :deep(li) :deep(ol) { margin: 6px 0 0; padding-left: 1.2em; }
+.final-content.md-content :deep(li) :deep(ul) :deep(li) { margin-bottom: 4px; line-height: 1.7; }
 
 /* ---------- 展开动画 ---------- */
 .expand-enter-active,

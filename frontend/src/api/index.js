@@ -210,9 +210,35 @@ export const renameConversation = async (id, title) => {
   return res.data
 }
 
+export const toggleFavorite = async (id) => {
+  const res = await request.patch('/conversation/' + id + '/favorite')
+  return res.data
+}
+
+export const togglePin = async (id) => {
+  const res = await request.patch('/conversation/' + id + '/pin')
+  return res.data
+}
+
 // ============ 个人画像接口（个人知识引擎） ============
 export const getMyPersona = async () => {
   const res = await request.get('/ai/persona/me')
+  return res.data
+}
+
+// ============ 个人中心接口 ============
+export const getProfile = async () => {
+  const res = await request.get('/user/profile')
+  return res.data
+}
+
+export const updateProfile = async (data) => {
+  const res = await request.put('/user/profile', data)
+  return res.data
+}
+
+export const changePassword = async (oldPassword, newPassword) => {
+  const res = await request.put('/user/password', { oldPassword, newPassword })
   return res.data
 }
 

@@ -39,6 +39,14 @@ public class User {
     @Column(length = 100)
     private String nickname;
 
+    /** 头像 URL，为空则展示默认头像 */
+    @Column(length = 500)
+    private String avatar;
+
+    /** 个人简介 */
+    @Column(length = 300)
+    private String bio;
+
     /** 注册时间，由 @PrePersist 自动填充 */
     private LocalDateTime createdAt;
 

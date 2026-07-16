@@ -1,6 +1,8 @@
 <template>
-  <div class="super-agent-container">
+  <div class="super-agent-container" :class="{ 'drawer-open': drawerOpen }">
     <SessionSidebar ref="sidebarRef" @persona-action="handlePersonaAction" />
+    <!-- 移动端遮罩层：点击收起侧边栏 -->
+    <div v-if="drawerOpen" class="drawer-overlay" @click="closeDrawer" aria-hidden="true"></div>
     <!-- 管理知识库 — 页面右上角 -->
     <button class="header-btn manage-btn" @click="openManageDialog" title="上传 / 管理知识库文档">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -15,6 +17,14 @@
     <!-- ====== Header ====== -->
     <header class="header">
       <div class="header-left">
+        <!-- 移动端汉堡菜单按钮 -->
+        <button class="hamburger-btn" @click="toggleDrawer" aria-label="打开会话列表" title="会话列表">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="21" y2="12" />
+            <line x1="3" y1="18" x2="21" y2="18" />
+          </svg>
+        </button>
         <div class="brand-mark" aria-label="LightManus">
           <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
             <circle cx="11" cy="6" r="3.5" stroke="#2563eb" stroke-width="1.2" fill="none" opacity="0.45" />
@@ -246,7 +256,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useHead } from '@vueuse/head'
 import { useChatStore } from '@/stores/chatStore'
@@ -255,7 +265,7 @@ import SessionSidebar from '../components/SessionSidebar.vue'
 import { chatWithManus, uploadKnowledgeBase, listKnowledgeFiles, deleteKnowledgeFile, batchDeleteKnowledgeFiles, previewKnowledgeFile, searchTestKnowledge, getUsageToday } from '../api'
 import { connectSSE } from '../api'
 import { useUserStore } from '@/stores/userStore'
-const USE_MOCK = false  // true=Mock演示, false=真实后端
+const USE_MOCK = false  // true=Mock演示, false=真实后端（测试表格渲染时改为 true）
 const userStore = useUserStore()
 
 
@@ -269,6 +279,12 @@ const chatStore = useChatStore()
 const currentSessionTitle = computed(() => chatStore.currentSession?.title || '')
 const sidebarRef = ref(null)
 const connectionStatus = ref('disconnected')
+// 移动端侧边栏抽屉状态
+const drawerOpen = ref(false)
+const toggleDrawer = () => { drawerOpen.value = !drawerOpen.value }
+const closeDrawer = () => { drawerOpen.value = false }
+// 切换会话后自动收起抽屉（移动端体验优化）
+watch(() => chatStore.activeId, () => { drawerOpen.value = false })
 // 能力开关状态（由 ChatRoom toggle 上报）
 // 「深度思考」默认开启（与 ChatRoom 的 initialCaps 默认值一致），避免状态不同步
 const activeCaps = ref({ webSearch: true, knowledgeBase: false })
@@ -1009,6 +1025,8 @@ function buildMockScenario(userMessage) {
       return buildFileScenario(userMessage)
     case 'knowledge':
       return buildKnowledgeScenario(userMessage)
+    case 'table':
+      return buildTableScenario(userMessage)
     default:
       return buildSearchScenario(userMessage)
   }
@@ -1024,6 +1042,7 @@ function detectIntent(msg) {
   if (/(数据|分析|统计|图表|csv|excel|报表|计算)/.test(m)) return 'data'
   if (/(文件|目录|读取|写入|上传|下载|列表)/.test(m)) return 'file'
   if (/(知识|文档|内部|系统架构|项目|代码库)/.test(m)) return 'knowledge'
+  if (/(表格|对比|比较|table|区别|差异|优劣|方案)/.test(m)) return 'table'
   return 'search'
 }
 
@@ -1243,6 +1262,77 @@ function buildKnowledgeScenario(q) {
   }
 }
 
+/** 表格对比类 —— 专门测试 Markdown 表格渲染 */
+function buildTableScenario(q) {
+  return {
+    cycles: [
+      {
+        thought: { content: `用户想要一个对比表格（「${q}」）。我先搜集几个主流方案的参数，整理成结构化的对比表。` },
+        action: {
+          ...TOOL_STYLE.searchWeb,
+          params: { query: q + ' 方案对比 2025', language: 'zh-CN', limit: 5 }
+        },
+        observation: {
+          summary: '搜索返回 5 个主流方案的详细参数，覆盖收益率、风险、门槛等维度。',
+          rawResult: JSON.stringify({ query: q + ' 方案对比', total: 5, results: buildSearchResults(q + ' 方案对比').slice(0, 5) }, null, 2)
+        }
+      },
+      {
+        thought: { content: '数据已收集完毕。整理成对比表格，按收益率从高到低排序，并标注适合人群。' },
+        action: {
+          ...TOOL_STYLE.executeCode,
+          params: {
+            language: 'python',
+            code: 'import json\nschemes = [\n    {"name": "余额宝", "rate": "1.5%", "risk": "极低", "min": "1元", "liquidity": "随时"},\n    {"name": "银行理财", "rate": "3.2%", "risk": "低", "min": "1万元", "liquidity": "T+1"},\n    {"name": "指数基金", "rate": "8.5%", "risk": "中", "min": "10元", "liquidity": "T+1"},\n    {"name": "股票", "rate": "15%", "risk": "高", "min": "100股", "liquidity": "T+1"},\n]\nprint(json.dumps(schemes, ensure_ascii=False))'
+          }
+        },
+        observation: {
+          summary: '数据整理完成，5 个方案的关键指标已提取。',
+          rawResult: JSON.stringify({ output: '5 schemes sorted by rate', exitCode: 0 }, null, 2)
+        }
+      }
+    ],
+    finalAnswer: `## 💰 理财方案对比分析
+
+根据你的需求「${q}」，我整理了当前主流理财方案的对比：
+
+### 方案核心指标对比
+
+| 理财方式 | 预期年化 | 风险等级 | 起投金额 | 流动性 | 适合人群 |
+|----------|---------|---------|---------|--------|---------|
+| 余额宝 | 1.5%~2% | 🟢 极低 | 1 元 | 随时赎回 | 零花钱管理、短期周转 |
+| 银行理财 | 2.5%~4% | 🟢 低 | 1 万元 | T+1 到账 | 保守型、3-6 个月闲置资金 |
+| 债券基金 | 3%~5% | 🟡 中低 | 10 元 | T+1 到账 | 稳健型、半年以上持有 |
+| 指数基金 | 6%~10% | 🟠 中 | 10 元 | T+1 到账 | 平衡型、3年以上投资 |
+| 股票 | 10%~20%+ | 🔴 高 | 100 股起 | T+1 交易 | 进取型、能承受 30%+ 回撤 |
+
+### 📊 风险收益散点
+
+| 方案 | 收益区间 | 最大回撤 | 投资门槛 | 学习成本 |
+|------|---------|---------|---------|---------|
+| 货基/余额宝 | 1.5-2% | 0% | ★☆☆☆☆ | ★☆☆☆☆ |
+| 银行理财 | 2.5-4% | 0-1% | ★★☆☆☆ | ★★☆☆☆ |
+| 债券基金 | 3-5% | 2-5% | ★★☆☆☆ | ★★★☆☆ |
+| 指数基金 | 6-10% | 15-30% | ★★★☆☆ | ★★★☆☆ |
+| 股票 | 10-20%+ | 30-50% | ★★★★☆ | ★★★★★ |
+
+### 💡 配置建议
+
+**保守型（30% 以下权益）**：
+- 50% 货基 + 30% 银行理财 + 20% 债券基金
+
+**平衡型（50% 左右权益）**：
+- 20% 货基 + 30% 债券基金 + 40% 指数基金 + 10% 股票
+
+**进取型（70% 以上权益）**：
+- 10% 货基 + 20% 债券基金 + 40% 指数基金 + 30% 股票
+
+> ⚠️ **风险提示**：以上数据基于历史表现，不构成投资建议。投资有风险，入市需谨慎。
+
+需要我针对某个具体方案深入分析，或者根据你的资金量和风险偏好做个性化配置吗？`
+  }
+}
+
 // 异步模拟 ReAct 渐进流式输出
 async function runMockReActStream(msgIndex, scenario) {
   const msg = () => chatStore.activeMessages[msgIndex]
@@ -1355,6 +1445,29 @@ onBeforeUnmount(() => {
   gap: 10px;
   justify-self: start;
 }
+
+/* 汉堡菜单按钮 — 桌面端隐藏，移动端显示 */
+.hamburger-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 0.2s, color 0.2s;
+}
+.hamburger-btn:hover {
+  background: var(--bg-base);
+  color: var(--accent);
+}
+
+/* 移动端遮罩层 */
+.drawer-overlay {
+  display: none;
+}
 .brand-word {
   font-family: var(--font-display);
   font-size: 1.05rem;
@@ -1408,41 +1521,6 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-self: end;
   gap: 8px;
-}
-
-.user-menu {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-left: 10px;
-  margin-left: 4px;
-  border-left: 1px solid var(--border-subtle);
-}
-.user-avatar {
-  width: 28px; height: 28px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: white;
-  font-size: 0.75rem;
-  font-weight: 600;
-  flex-shrink: 0;
-}
-.user-name {
-  font-size: 0.8125rem;
-  color: var(--text-secondary);
-  max-width: 100px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.logout-btn {
-  color: var(--text-tertiary);
-}
-.logout-btn:hover {
-  color: #dc2626;
-  border-color: rgba(220,38,38,0.3);
-  background: rgba(220,38,38,0.05);
 }
 
 .header-btn {
@@ -2058,15 +2136,74 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
+/* =============================================
+   移动端响应式适配（≤768px 平板 / ≤488px 手机）
+   ============================================= */
 @media (max-width: 768px) {
+  .hamburger-btn { display: inline-flex; }
   .header { padding: 12px 16px; }
   .title { font-size: 0.9375rem; }
   .chat-area { padding: 12px; }
+  .header-center { max-width: 70%; }
+
+  /* 侧边栏收起为抽屉（:deep 穿透子组件 scoped） */
+  :deep(.session-sidebar) {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    z-index: 2000;
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: none;
+  }
+  .drawer-open :deep(.session-sidebar) {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18);
+  }
+
+  /* 遮罩层 */
+  .drawer-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1999;
+    background: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+    animation: overlayIn 0.28s ease;
+  }
+  @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
+
+  /* 管理知识库按钮：移动端只保留图标，避免挤占 */
+  .manage-btn span { display: none; }
+  .manage-btn { padding: 8px; top: 12px; right: 16px; }
+
+  /* 弹窗宽度 */
+  .modal-dialog { width: 95%; max-width: 95%; }
 }
+
 @media (max-width: 480px) {
   .header { padding: 10px 12px; }
   .title { font-size: 0.875rem; }
   .chat-area { padding: 8px; }
+
+  /* 侧边栏宽度适配手机 */
+  :deep(.session-sidebar) { width: 85vw; max-width: 300px; }
+
+  /* 文件列表操作按钮收紧 */
+  .file-row { gap: 6px; padding: 8px 10px; }
+  .file-actions { gap: 2px; }
+  .file-action-btn { width: 26px; height: 26px; }
+  .file-line2 { font-size: 0.6875rem; }
+
+  /* 弹窗更紧凑 */
+  .modal-body { padding: 12px 14px; }
+  .modal-header { padding: 12px 14px; }
+  .modal-footer { padding: 10px 14px; }
+
+  /* 检索测试：按钮换行 */
+  .search-test-bar { flex-wrap: wrap; }
+  .search-test-select { max-width: 100%; }
 }
 
 /* === Quota Toast === */
@@ -2086,3 +2223,4 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 </style>
+ 

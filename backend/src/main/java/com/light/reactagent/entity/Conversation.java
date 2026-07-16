@@ -30,6 +30,14 @@ public class Conversation {
     @Column(length = 200)
     private String title;
 
+    /** 是否收藏 */
+    @Column(nullable = false)
+    private boolean favorite = false;
+
+    /** 是否置顶 */
+    @Column(nullable = false)
+    private boolean pinned = false;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

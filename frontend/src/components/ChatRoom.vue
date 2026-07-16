@@ -79,7 +79,7 @@
                 <div class="message-bubble">
                   <div class="message-content">
                     <span v-if="msg.thinking" class="thinking-live">💭 思考中…</span>
-                    <span v-else>{{ stripMarkdown(msg.content) }}</span>
+                    <div v-else class="md-content" v-html="renderMarkdown(msg.content)"></div>
                     <span v-if="connectionStatus === 'connecting' && index === messages.length - 1 && !msg.thinking" class="typing-indicator">▋</span>
                   </div>
                 </div>
@@ -272,6 +272,7 @@ import ReActSteps from './ReActSteps.vue'
 import ChartCard from './ChartCard.vue'
 import { downloadFile as downloadFileApi } from '@/api'
 import { stripMarkdown } from '@/utils/markdown'
+import { renderMarkdown } from '@/utils/markdown-render'
 
 const props = defineProps({
   messages: {
@@ -773,6 +774,201 @@ onMounted(() => {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/*
+ * =============================================
+ * Markdown 渲染内容 (.md-content)
+ * 所有子元素选择器均用 :deep() 穿透到 v-html 注入的动态节点
+ * 注意：.md-content 本身在模板中，有 scoped 属性
+ *       但其子元素（由 v-html 注入）没有 scoped 属性
+ *       所以必须用 :deep() 来匹配这些动态节点
+ * ========================================= */
+
+/* ---- 容器 ---- */
+.md-content {
+  white-space: normal;
+  max-width: 100%;
+  font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+}
+
+/* ---- 直接子元素首尾间距 ---- */
+.md-content > :deep(:first-child) { margin-top: 0; }
+.md-content > :deep(:last-child)  { margin-bottom: 0; }
+
+/* ---- 段落 ---- */
+.md-content :deep(p) { margin: 0 0 12px; line-height: 1.75; }
+
+/* ---- 标题 ---- */
+.md-content :deep(h1),
+.md-content :deep(h2),
+.md-content :deep(h3),
+.md-content :deep(h4) {
+  font-family: var(--font-body);
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 20px 0 10px;
+  color: var(--text-primary);
+}
+.md-content :deep(h1) { font-size: 20px; color: var(--accent); }
+.md-content :deep(h2) { font-size: 18px; border-left: 3px solid var(--accent); padding-left: 10px; color: var(--accent); }
+.md-content :deep(h3) { font-size: 16px; border-left: 3px solid var(--border-active); padding-left: 8px; color: var(--text-primary); }
+.md-content :deep(h4) { font-size: 15px; color: var(--text-secondary); }
+
+/* ---- 强调文本：和正文完全一致，不做任何变色加粗 ---- */
+.md-content :deep(strong),
+.md-content :deep(b) {
+  font-weight: inherit;
+  color: inherit;
+}
+.md-content :deep(em) { font-style: italic; }
+
+/* ---- 链接 ---- */
+.md-content :deep(a) { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.md-content :deep(a):hover { color: var(--accent-hover); }
+
+/* ---- 列表 ---- */
+/* 有序列表：保持原生数字编号 */
+.md-content :deep(ol) { padding-left: 1.5em; margin: 0 0 12px; }
+.md-content :deep(ol) :deep(li) { margin-bottom: 8px; line-height: 1.8; }
+
+/* 无序列表：去掉默认圆点，用 ::before 自定义小方块标记 */
+.md-content :deep(ul) {
+  list-style: none;
+  padding-left: 0;
+  margin: 0 0 12px;
+}
+.md-content :deep(ul) :deep(li) {
+  margin-bottom: 8px;
+  line-height: 1.8;
+  padding-left: 18px;
+  position: relative;
+}
+.md-content :deep(ul) :deep(li)::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+/* 嵌套列表：缩进 + 继承自定义标记 */
+.md-content :deep(li) :deep(ul),
+.md-content :deep(li) :deep(ol) { margin: 6px 0 0; padding-left: 1.2em; }
+.md-content :deep(li) :deep(ul) :deep(li) { margin-bottom: 4px; line-height: 1.7; }
+
+/* ---- 行内代码 ---- */
+.md-content :deep(code) {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--bg-base);
+  color: #c7254e;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+}
+
+/* ---- 代码块 ---- */
+.md-content :deep(pre) {
+  background: var(--gray-100);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 12px 0;
+  overflow-x: auto;
+}
+.md-content :deep(pre) :deep(code) {
+  background: transparent;
+  border: none;
+  color: var(--gray-900);
+  padding: 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  white-space: pre;
+  display: block;
+}
+
+/* ---- 引用块 ---- */
+.md-content :deep(blockquote) {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-bg);
+  margin: 12px 0;
+  padding: 10px 14px;
+  border-radius: 0 8px 8px 0;
+  color: var(--text-secondary);
+}
+.md-content :deep(blockquote) :deep(p:last-child) { margin-bottom: 0; }
+
+/* ---- 分割线 ---- */
+.md-content :deep(hr) {
+  border: none;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--border-subtle) 20%, var(--border-subtle) 80%, transparent);
+  margin: 20px 0;
+}
+
+/* ---- 表格 ---- */
+.md-content :deep(table) {
+  width: 100%; max-width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 0.875rem;
+  display: block; overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  -webkit-overflow-scrolling: touch;
+}
+.md-content :deep(thead) :deep(th) {
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.8125rem;
+  padding: 10px 14px;
+  text-align: left;
+  line-height: 1.5;
+  white-space: nowrap;
+  border-bottom: 2px solid rgba(37, 99, 235, 0.15);
+  min-width: 80px;
+}
+.md-content :deep(thead) :deep(th:last-child) { min-width: 0; }
+.md-content :deep(thead) :deep(th:not(:last-child)) { border-right: 1px solid rgba(37, 99, 235, 0.1); }
+.md-content :deep(tbody) :deep(td) {
+  padding: 10px 14px;
+  text-align: left;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  word-break: break-word;
+  font-variant-numeric: tabular-nums;
+}
+.md-content :deep(tbody) :deep(td:not(:last-child)) { border-right: 1px solid rgba(17, 24, 39, 0.05); }
+.md-content :deep(tbody) :deep(tr:last-child) :deep(td) { border-bottom: none; }
+.md-content :deep(tbody) :deep(tr:nth-child(even) td) { background: rgba(17, 24, 39, 0.02); }
+.md-content :deep(tbody) :deep(tr:hover td) { background: rgba(37, 99, 235, 0.04); }
+.md-content :deep(tbody) :deep(tr:nth-child(even):hover td) { background: rgba(37, 99, 235, 0.06); }
+
+/* ---- highlight.js 自定义 token 色（浅色） ---- */
+.hljs-keyword  { color: #d73a49; }
+.hljs-string   { color: #032f62; }
+.hljs-comment  { color: #6a737d; font-style: italic; }
+.hljs-number   { color: #005cc5; }
+.hljs-function { color: #6f42c1; }
+.hljs-title    { color: #6f42c1; }
+.hljs-params   { color: #24292e; }
+.hljs-built_in { color: #e36209; }
+.hljs-attr     { color: #005cc5; }
+.hljs-literal  { color: #005cc5; }
+.hljs-meta     { color: #5a6072; }
+.hljs-type     { color: #d73a49; }
+.hljs-symbol   { color: #e36209; }
+.hljs-name     { color: #22863a; }
+.hljs-selector-class { color: #6f42c1; }
+.hljs-selector-tag   { color: #22863a; }
+.hljs-attribute     { color: #005cc5; }
+.hljs-variable      { color: #e36209; }
+.hljs-subst         { color: #24292e; }
 
 .message-time {
   font-family: var(--font-mono);
@@ -1353,14 +1549,65 @@ onMounted(() => {
   transform: translateY(8px) scale(0.95);
 }
 
-/* ---------- 响应式 ---------- */
+/* ---------- 响应式 =============================================
+   断点：≤768px 平板 / ≤480px 手机
+   目标：手机端布局正常可用，触控友好，表格/代码块可横滑
+   ============================================= */
+
+/* ---- 表格横滑提示：右侧阴影渐变，暗示可滚动 ---- */
 @media (max-width: 768px) {
-  .message { max-width: 95%; }
-  .ai-message-body { max-width: 95%; }
-  .user-message { max-width: 95%; }
+  .md-content :deep(table) {
+    background-image: linear-gradient(to right, rgba(255,255,255,0), var(--bg-elevated) 12px);
+    background-size: 12px 100%;
+    background-position: right;
+    background-repeat: no-repeat;
+    background-attachment: scroll;
+  }
+  [data-theme="dark"] .md-content :deep(table) {
+    background-image: linear-gradient(to right, rgba(255,255,255,0), var(--bg-elevated) 12px);
+  }
+}
+
+@media (max-width: 768px) {
+  /* 气泡：窄屏下放宽到 90%，避免过窄 */
+  .message { max-width: 90%; }
+  .ai-message-body { max-width: 90%; }
+  .user-message { max-width: 90%; }
   .message-content { font-size: 0.875rem; }
-  .chat-input { padding: 10px 12px 12px; }
+
+  /* Markdown 内容：移动端正文 14px，标题缩小 */
+  .md-content {
+    font-size: 0.875rem;
+    :deep(p) { font-size: 0.875rem; line-height: 1.7; }
+    :deep(h1) { font-size: 18px; margin: 16px 0 8px; }
+    :deep(h2) { font-size: 16px; margin: 14px 0 7px; }
+    :deep(h3) { font-size: 15px; margin: 12px 0 6px; }
+    :deep(h4) { font-size: 14px; }
+    :deep(li) { line-height: 1.7; }
+    :deep(pre) { padding: 12px; }
+    :deep(pre) :deep(code) { font-size: 0.75rem; }
+    :deep(table) { font-size: 0.8125rem; }
+    :deep(thead) :deep(th) { font-size: 0.75rem; padding: 8px 10px; min-width: 64px; }
+    :deep(tbody) :deep(td) { padding: 8px 10px; }
+  }
+
+  /* 输入区 */
+  .chat-input { padding: 10px 12px 12px; gap: 8px; }
   .quick-cap-bar { padding: 8px 12px 0; }
+
+  /* 触控目标 ≥ 44px：发送/附件按钮放大 */
+  .send-button { width: 44px; height: 44px; }
+  .attach-button { width: 44px; height: 44px; }
+  .input-box { padding: 10px 14px; font-size: 0.875rem; }
+
+  /* 能力按钮：保持可点击 */
+  .quick-cap-btn { padding: 6px 14px; font-size: 0.8125rem; }
+
+  /* 文件下载卡片：按钮放大 */
+  .file-card-btn { width: 36px; height: 36px; }
+
+  /* 图表卡片：移动端取消最小宽度限制 */
+  .chart-cards { min-width: 0; }
 }
 
 @media (max-width: 480px) {
@@ -1368,6 +1615,32 @@ onMounted(() => {
   .message-bubble { padding: 10px 14px; }
   .message-content { font-size: 0.8125rem; }
   .welcome-panel { padding: 20px 12px; }
+
+  /* 气泡进一步放宽 */
+  .message { max-width: 95%; }
+  .ai-message-body { max-width: 95%; }
+  .user-message { max-width: 95%; }
+
+  /* Markdown：手机屏正文 13px */
+  .md-content {
+    font-size: 0.8125rem;
+    :deep(p) { font-size: 0.8125rem; }
+    :deep(h1) { font-size: 16px; }
+    :deep(h2) { font-size: 15px; }
+    :deep(h3) { font-size: 14px; }
+    :deep(h4) { font-size: 13px; }
+    :deep(thead) :deep(th) { padding: 6px 8px; font-size: 0.6875rem; min-width: 56px; }
+    :deep(tbody) :deep(td) { padding: 6px 8px; font-size: 0.75rem; }
+  }
+
+  /* 能力按钮：只保留图标 + 简化文字，避免挤 */
+  .quick-cap-btn span { display: none; }
+  .quick-cap-btn { padding: 8px; gap: 0; }
+  .cap-hint { display: none; }
+
+  /* 附件 chip 适配 */
+  .attachment-chip { margin: 6px 12px 0; max-width: calc(100% - 24px); }
+  .attachment-name { max-width: 120px; }
 }
 
 /* ---------- 对话附件 chip ---------- */
@@ -1506,4 +1779,52 @@ onMounted(() => {
   font-size: 0.8125rem;
   font-weight: 500;
 }
+
+/* =============================================
+   Markdown 深色模式覆盖（全部用 :deep() 穿透）
+   ========================================= */
+
+[data-theme="dark"] .md-content {
+  :deep(h2) { border-left-color: var(--accent); }
+  :deep(h3) { border-left-color: var(--border-active); }
+
+  :deep(strong), :deep(b) { font-weight: inherit; color: inherit; }
+
+  :deep(code) { background: var(--gray-200); border-color: var(--border-subtle); color: #ff7b72; }
+
+  :deep(pre) { background: #161a22; }
+  :deep(pre) :deep(code) { color: #e5e9f0; }
+
+  :deep(blockquote) { background: rgba(59, 130, 246, 0.1); border-left-color: var(--accent); }
+
+  :deep(thead) :deep(th) { background: rgba(59, 130, 246, 0.12); color: var(--accent); border-bottom-color: rgba(59, 130, 246, 0.25); }
+  :deep(thead) :deep(th:not(:last-child)) { border-right-color: rgba(59, 130, 246, 0.15); }
+  :deep(tbody) :deep(td:not(:last-child)) { border-right-color: rgba(255, 255, 255, 0.05); }
+  :deep(tbody) :deep(tr:nth-child(even) td) { background: rgba(255, 255, 255, 0.03); }
+  :deep(tbody) :deep(tr:hover td) { background: rgba(59, 130, 246, 0.08); }
+  :deep(tbody) :deep(tr:nth-child(even):hover td) { background: rgba(59, 130, 246, 0.1); }
+
+  :deep(hr) { background: linear-gradient(to right, transparent, rgba(255,255,255,0.08) 20%, rgba(255,255,255,0.08) 80%, transparent); }
+}
+
+/* highlight.js 深色 token 色 */
+[data-theme="dark"] .hljs-keyword  { color: #ff7b72; }
+[data-theme="dark"] .hljs-string   { color: #a5d6ff; }
+[data-theme="dark"] .hljs-comment  { color: #8b949e; }
+[data-theme="dark"] .hljs-number   { color: #79c0ff; }
+[data-theme="dark"] .hljs-function { color: #d2a8ff; }
+[data-theme="dark"] .hljs-title    { color: #d2a8ff; }
+[data-theme="dark"] .hljs-params   { color: #e5e9f0; }
+[data-theme="dark"] .hljs-built_in { color: #ffa657; }
+[data-theme="dark"] .hljs-attr     { color: #79c0ff; }
+[data-theme="dark"] .hljs-literal  { color: #79c0ff; }
+[data-theme="dark"] .hljs-meta     { color: #8b949e; }
+[data-theme="dark"] .hljs-type     { color: #ff7b72; }
+[data-theme="dark"] .hljs-symbol   { color: #ffa657; }
+[data-theme="dark"] .hljs-name     { color: #7ee787; }
+[data-theme="dark"] .hljs-selector-class { color: #d2a8ff; }
+[data-theme="dark"] .hljs-selector-tag   { color: #7ee787; }
+[data-theme="dark"] .hljs-attribute     { color: #79c0ff; }
+[data-theme="dark"] .hljs-variable      { color: #ffa657; }
+[data-theme="dark"] .hljs-subst         { color: #e5e9f0; }
 </style>
