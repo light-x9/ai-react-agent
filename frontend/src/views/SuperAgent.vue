@@ -26,6 +26,23 @@
       <div class="header-center">
         <span class="title">{{ currentSessionTitle }}</span>
       </div>
+      <div class="header-right">
+        <div class="user-menu" ref="userMenuRef" @click.stop="toggleUserMenu">
+          <div class="user-avatar">{{ userInitial }}</div>
+          <svg class="dropdown-arrow" :class="{ open: userMenuOpen }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+          <div v-if="userMenuOpen" class="dropdown-menu" @click.stop>
+            <router-link to="/user" class="dropdown-item" @click="userMenuOpen = false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              个人中心
+            </router-link>
+            <div class="dropdown-divider"></div>
+            <button class="dropdown-item logout" @click="logout">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              退出登录
+            </button>
+          </div>
+        </div>
+      </div>
     </header>
 
     <!-- Hidden file input -->
@@ -1299,14 +1316,32 @@ const logout = () => {
   router.push('/login')
 }
 
+// ---- 头部用户菜单 ----
+const userMenuOpen = ref(false)
+const userMenuRef = ref(null)
+const userInitial = computed(() =>
+  (userStore.username || 'U').charAt(0).toUpperCase()
+)
+const toggleUserMenu = () => {
+  userMenuOpen.value = !userMenuOpen.value
+}
+const closeUserMenu = (e) => {
+  if (userMenuRef.value && !userMenuRef.value.contains(e.target)) {
+    userMenuOpen.value = false
+  }
+}
+
 onMounted(async () => {
   // 初始化：从后端加载会话列表与历史消息（无会话则新建）
   await chatStore.init()
   // 检查当日配额状态（若已达上限则锁输入框）
   await checkQuota()
+  // 点击其它区域关闭用户菜单
+  document.addEventListener('click', closeUserMenu)
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('click', closeUserMenu)
   if (eventSource) eventSource.close()
 })
 </script>
@@ -1410,13 +1445,75 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+/* === 头部右侧用户菜单 === */
+.header-right {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+}
 .user-menu {
   display: flex;
   align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.2s;
+}
+.user-menu:hover {
+  background: var(--accent-bg);
+}
+.dropdown-arrow {
+  color: var(--text-tertiary);
+  transition: transform 0.2s;
+}
+.dropdown-arrow.open {
+  transform: rotate(180deg);
+}
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 160px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  z-index: 100;
+  animation: dropdown-in 0.15s ease-out;
+}
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.dropdown-item {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  padding-left: 10px;
-  margin-left: 4px;
-  border-left: 1px solid var(--border-subtle);
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  border-radius: var(--radius-sm);
+  transition: background 0.15s;
+  text-align: left;
+  text-decoration: none;
+}
+.dropdown-item:hover {
+  background: var(--accent-bg);
+}
+.dropdown-item.logout {
+  color: var(--color-error);
+}
+.dropdown-item.logout:hover {
+  background: var(--color-error-bg);
+}
+.dropdown-divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border-subtle);
 }
 .user-avatar {
   width: 28px; height: 28px;

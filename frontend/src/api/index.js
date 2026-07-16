@@ -216,6 +216,22 @@ export const getMyPersona = async () => {
   return res.data
 }
 
+// ============ 个人中心接口 ============
+export const getProfile = async () => {
+  const res = await request.get('/user/profile')
+  return res.data
+}
+
+export const updateProfile = async (data) => {
+  const res = await request.put('/user/profile', data)
+  return res.data
+}
+
+export const changePassword = async (oldPassword, newPassword) => {
+  const res = await request.put('/user/password', { oldPassword, newPassword })
+  return res.data
+}
+
 // ============ 多模型路由接口 ============
 export const listModels = async () => {
   const res = await request.get('/ai/models')

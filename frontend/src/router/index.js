@@ -21,6 +21,15 @@ const routes = [
       public: true
     }
   },
+  {
+    path: '/user',
+    name: 'UserCenter',
+    component: () => import('../views/UserCenter.vue'),
+    meta: {
+      title: '个人中心',
+      requiresAuth: true
+    }
+  },
   // 旧路径兼容（书签/外链），重定向到根路径
   { path: '/super-agent', redirect: '/' },
   // 原 Home 组件保留但不挂路由，方便后续回退
