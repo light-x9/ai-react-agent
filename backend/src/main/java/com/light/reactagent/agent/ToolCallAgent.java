@@ -2,8 +2,12 @@ package com.light.reactagent.agent;
 
 import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
+import cn.hutool.json.JSONUtil;
 import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
 import com.light.reactagent.agent.model.AgentState;
+import com.light.reactagent.config.SpringBeanUtils;
+import com.light.reactagent.tools.image.ImageProxyService;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +23,7 @@ import org.springframework.ai.model.tool.ToolExecutionResult;
 import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.resolution.StaticToolCallbackResolver;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -34,6 +39,16 @@ public class ToolCallAgent extends ReActAgent {
     private final ChatOptions chatOptions;
 
     /**
+     * 获取图片 URL 处理服务。
+     * <p>
+     * Agent 非 Spring Bean（每次请求手动 new），无法使用 @Autowired / @Resource 注入，
+     * 通过 SpringBeanUtils 间接获取，与 ReActAgent.getMetadataManager() 模式一致。
+     */
+    private ImageProxyService getImageProxyService() {
+        return SpringBeanUtils.getBean(ImageProxyService.class);
+    }
+
+    /**
      * 单条工具返回内容截断上限（字符）。工具（如网页抓取）可能返回数万字原文，
      * 若不截断会被 Agent 每一步重发给 LLM，在长任务里随步数快速累积导致 token 超限 / 延迟飙升。
      */
@@ -42,6 +57,12 @@ public class ToolCallAgent extends ReActAgent {
     // 当前步骤的思考内容与工具调用（供 step() 构建结构化 SSE 输出）
     private String currentThought;
     private List<Map<String, String>> currentToolCalls;
+
+    /**
+     * 当前步骤从工具结果中提取的结构化图片数据（供 ReActAgent 推送 image 事件）。
+     * 同一步骤内多次 searchImage 调用会累积，drainStepImages() 排空时清空，保证按消息隔离。
+     */
+    private List<ImageItem> currentStepImages = new ArrayList<>();
 
     public ToolCallAgent(ToolCallback[] availableTools) {
         super();
@@ -170,6 +191,10 @@ public class ToolCallAgent extends ReActAgent {
         if (rawData == null || rawData.isBlank()) {
             return "工具 " + toolName + "：执行完成";
         }
+        // 图片搜索：提取结构化数据并暂存，返回给人看的文字摘要
+        if ("searchImage".equals(toolName)) {
+            return formatImageSearchResult(rawData);
+        }
         return switch (toolName) {
             case "searchWeb" -> "🔍 搜索结果：\n" + rawData;
             case "scrapeWebPage" -> {
@@ -181,8 +206,79 @@ public class ToolCallAgent extends ReActAgent {
             case "downloadResource" -> "⬇️ " + rawData;
             case "executeTerminalCommand" -> "💻 " + rawData;
             case "doTerminate" -> "任务结束";
-            case "searchImage" -> "🖼️ 图片搜索完成";
             default -> "工具 " + toolName + " 执行完成";
         };
+    }
+
+    /**
+     * 处理图片搜索工具结果：提取结构化图片数据暂存到 currentStepImages，
+     * 返回给人看的文字摘要（供 observation 推送到前端 ReActSteps 展示）。
+     */
+    private String formatImageSearchResult(String rawData) {
+        // 1. 检查是否包含结构化分隔符
+        if (!rawData.contains(ToolResultMarkers.IMG_START) || !rawData.contains(ToolResultMarkers.IMG_END)) {
+            // 空结果或格式异常，直接返回文字（不清空 currentStepImages，保留同一步骤内已解析的图片）
+            return "🖼️ " + rawData;
+        }
+
+        try {
+            // 2. 提取 JSON
+            String json = rawData.substring(
+                    rawData.indexOf(ToolResultMarkers.IMG_START) + ToolResultMarkers.IMG_START.length(),
+                    rawData.indexOf(ToolResultMarkers.IMG_END)
+            ).trim();
+
+            // 3. 反序列化为 ImageItem 列表
+            List<ImageItem> images = parseImageItems(json);
+
+            // 4. 通过 ImageProxyService 处理 URL（当前直接透传，后续可加代理）
+            ImageProxyService proxyService = getImageProxyService();
+            if (proxyService != null) {
+                images.forEach(img -> {
+                    img.setUrl(proxyService.processUrl(img.getUrl()));
+                    img.setThumbnailUrl(proxyService.processThumbnailUrl(img.getThumbnailUrl()));
+                });
+            }
+
+            // 5. 累积到 currentStepImages（不 clear，支持同一步骤内多次 searchImage 调用）
+            currentStepImages.addAll(images);
+
+            return "🖼️ 搜索到 " + images.size() + " 张图片";
+        } catch (Exception e) {
+            log.warn("解析图片搜索结果失败，降级为纯文本展示: {}", e.getMessage());
+            return "🖼️ 图片搜索完成";
+        }
+    }
+
+    /**
+     * 将 JSON 字符串反序列化为 ImageItem 列表。
+     * 兼容两种格式：JSON 数组 [{...}, {...}] 或 Hutool 的 JSONArray 字符串。
+     */
+    private List<ImageItem> parseImageItems(String json) {
+        List<ImageItem> items = new ArrayList<>();
+        JSONUtil.parseArray(json).forEach(obj -> {
+            JSONObject jo = (JSONObject) obj;
+            items.add(ImageItem.builder()
+                    .url(jo.getStr(ToolResultMarkers.FIELD_URL))
+                    .thumbnailUrl(jo.getStr(ToolResultMarkers.FIELD_THUMBNAIL_URL))
+                    .width(jo.getInt(ToolResultMarkers.FIELD_WIDTH))
+                    .height(jo.getInt(ToolResultMarkers.FIELD_HEIGHT))
+                    .alt(jo.getStr(ToolResultMarkers.FIELD_ALT))
+                    .build());
+        });
+        return items;
+    }
+
+    /**
+     * 排空当前步骤的图片数据，供 ReActAgent.step() 消费。
+     * drain（排空）模式保证每步只消费一次，天然实现按消息隔离。
+     * <p>
+     * Override 父类 hook 方法，避免 ReActAgent 通过 instanceof 反向依赖子类。
+     */
+    @Override
+    public List<ImageItem> drainStepImages() {
+        List<ImageItem> result = new ArrayList<>(currentStepImages);
+        currentStepImages.clear();
+        return result;
     }
 }

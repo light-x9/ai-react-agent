@@ -9,10 +9,11 @@ package com.light.reactagent.agent;
  *   2. thought     : {"type":"thought","content":"..."}
  *   3. action      : {"type":"action","tool":"searchWeb","params":{...}}
  *   4. resource    : {"type":"resource","resourceType":"file","fileId":"xxx","name":"chart.json","size":1234,"fileType":"json"}
- *   5. observation : {"type":"observation","summary":"..."}
- *   6. (重复 2~5 直到完成)
- *   7. final       : {"type":"final","content":"...","files":[...]}
- *   8. [DONE]      : 终止标记
+ *   5. image       : {"type":"image","images":[{"url":"...","thumbnailUrl":"...","width":800,"height":600,"alt":"..."}]}
+ *   6. observation : {"type":"observation","summary":"..."}
+ *   7. (重复 2~6 直到完成)
+ *   8. final       : {"type":"final","content":"...","files":[...]}
+ *   9. [DONE]      : 终止标记
  * </pre>
  */
 public final class SseEventTypes {
@@ -25,6 +26,8 @@ public final class SseEventTypes {
     public static final String ACTION = "action";
     /** 资源产出：工具执行中产生的文件/图表（渐进推送，无需等到 final） */
     public static final String RESOURCE = "resource";
+    /** 图片搜索结果：工具执行中检索到的图片元数据（渐进推送，前端渲染为图片卡片） */
+    public static final String IMAGE = "image";
     /** 观察结果：工具执行完成后的摘要 */
     public static final String OBSERVATION = "observation";
     /** 最终回答：Agent 生成的最终文本答案，附带未推送过的文件 */

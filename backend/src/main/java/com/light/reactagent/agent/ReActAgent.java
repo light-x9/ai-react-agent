@@ -1,5 +1,6 @@
 package com.light.reactagent.agent;
 
+import cn.hutool.json.JSONUtil;
 import com.light.reactagent.agent.model.AgentState;
 import com.light.reactagent.config.SpringBeanUtils;
 import com.light.reactagent.tools.file.FileContextHolder;
@@ -93,7 +94,12 @@ public abstract class ReActAgent extends BaseAgent {
               .append(escapeJson(actionResult))
               .append("\"}");
 
-            // 3.1 渐进推送本次工具执行产生的新文件（resource 事件）
+            // 3.1 渐进推送本次工具执行检索到的图片（image 事件）
+            //     机制：从 ToolCallAgent 排空当前步骤的图片数据，构造 image JSON 行。
+            //     前端收到后立即渲染图片卡片，无需等到 final 事件。
+            appendNewImageEvents(sb);
+
+            // 3.2 渐进推送本次工具执行产生的新文件（resource 事件）
             //     机制：检查 FileContextHolder 中新增的 fileId，为每个未推送过的文件追加 resource JSON 行。
             //     前端收到后立即渲染卡片，无需等到 final 事件。
             appendNewResourceEvents(sb);
@@ -157,6 +163,35 @@ public abstract class ReActAgent extends BaseAgent {
             }
         }
         return "对话结束";
+    }
+
+    /**
+     * Hook：排空当前步骤的图片数据，供 step() 构造 image 事件。
+     * <p>
+     * 默认返回空列表（无图片能力）。子类（如 ToolCallAgent）按需 override。
+     * 用多态方法替代 instanceof 反向依赖，符合 Liskov 替换原则。
+     *
+     * @return 当前步骤累积的图片列表（调用后排空）
+     */
+    protected List<ImageItem> drainStepImages() {
+        return List.of();
+    }
+
+    /**
+     * 渐进推送本次工具执行检索到的图片作为 image 事件 JSON 行。
+     * <p>
+     * 每条 image 事件独立一行，前端收到后追加到当前消息的 images 数组。
+     * 图片数据保留完整的 url（原图）+ thumbnailUrl（缩略图），
+     * 前端网格用缩略图、Lightbox 放大用原图。DB 存储压缩是独立环节，不在此层处理。
+     */
+    private void appendNewImageEvents(StringBuilder sb) {
+        List<ImageItem> images = drainStepImages();
+        if (images.isEmpty()) {
+            return;
+        }
+        sb.append("\n{\"type\":\"").append(SseEventTypes.IMAGE).append("\",\"images\":")
+          .append(JSONUtil.toJsonStr(images))
+          .append("}");
     }
 
     /**

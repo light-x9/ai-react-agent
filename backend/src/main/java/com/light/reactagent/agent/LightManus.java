@@ -93,6 +93,21 @@ public class LightManus extends ToolCallAgent {
             Always use markdown content for generatePDF to get well-formatted output.
             """;
 
+    /**
+     * 图片搜索行为约束 —— 追加到所有含图片搜索能力的模式末尾。
+     * 防止模型在 final 回答中用 ![]() 重复引用已通过 image 事件展示的图片。
+     */
+    private static final String IMAGE_SEARCH_NOTICE = """
+
+            IMAGE SEARCH NOTICE — When the searchImage tool returns results:
+            - The found images are ALREADY displayed to the user as visual cards automatically (grid + lightbox preview).
+            - In your final answer, write ONLY a brief introductory sentence (e.g., "为你找到了几张相关的图片：").
+            - NEVER use markdown image syntax ![](url) to re-embed URLs that are already shown as cards.
+            - NEVER list out raw image URLs in your text response.
+            - NEVER create clickable links like [点击查看](url) or numbered lists with image links.
+            - If the user asks for a specific number of images (e.g., "只要一张" / "给我3张"), mention that number in your intro sentence but do NOT try to filter or re-list the images — the gallery already shows all results.
+            """;
+
     /** 纯对话模式：无联网/知识库工具，但地图工具可用；需联网/知识库时引导用户开开关，禁止编造 */
     private static final String PLAIN_CHAT_PROMPT = """
             IMPORTANT IDENTITY RULE — FOLLOW STRICTLY:
@@ -112,7 +127,7 @@ public class LightManus extends ToolCallAgent {
             NEVER fabricate real-time information you do not actually have.
 
             Keep answers clear and concise.
-            """ + MAP_TOOLS_NOTICE + FILE_TOOLS_NOTICE;
+            """ + MAP_TOOLS_NOTICE + FILE_TOOLS_NOTICE + IMAGE_SEARCH_NOTICE;
 
     /** 网页搜索模式 */
     private static final String WEB_SEARCH_PROMPT = """
@@ -134,7 +149,7 @@ public class LightManus extends ToolCallAgent {
             Always cite the source URL when referencing specific facts.
             Never fabricate information that is not present in the search results.
             Present a clear, final answer to the user — not a raw list of links.
-            """ + MAP_TOOLS_NOTICE + FILE_TOOLS_NOTICE;
+            """ + MAP_TOOLS_NOTICE + FILE_TOOLS_NOTICE + IMAGE_SEARCH_NOTICE;
 
     /** 知识库模式 */
     private static final String KNOWLEDGE_BASE_PROMPT = """
@@ -156,7 +171,7 @@ public class LightManus extends ToolCallAgent {
             and suggest uploading related documents. Do NOT fabricate.
 
             Base your answer on retrieved content, cite the source filename.
-            """ + MAP_TOOLS_NOTICE + FILE_TOOLS_NOTICE;
+            """ + MAP_TOOLS_NOTICE + FILE_TOOLS_NOTICE + IMAGE_SEARCH_NOTICE;
 
     /** 双开模式 */
     private static final String BOTH_PROMPT = """
@@ -174,7 +189,7 @@ public class LightManus extends ToolCallAgent {
             CRITICAL LANGUAGE RULE: Respond in the same language as the user.
 
             Answer in your own words based on tool results. Cite sources (URL or filename).
-            """ + MAP_TOOLS_NOTICE + FILE_TOOLS_NOTICE;
+            """ + MAP_TOOLS_NOTICE + FILE_TOOLS_NOTICE + IMAGE_SEARCH_NOTICE;
 
     private static final String NEXT_STEP_PROMPT = """
             Based on user needs, select the appropriate tool to gather information, then answer.
