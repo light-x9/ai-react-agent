@@ -336,7 +336,7 @@ function removeDuplicateImages(html, urlSet) {
 
 
 useHead({
-  title: '超级智能体 - YuPi AI',
+  title: 'LightManus-多工具AI智能体平台',
   meta: [{ name: 'description', content: '具备工具调用与知识库能力的 AI 超级智能体' }]
 })
 

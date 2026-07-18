@@ -7,7 +7,7 @@ const routes = [
     name: 'SuperAgent',
     component: () => import('../views/SuperAgent.vue'),
     meta: {
-      title: 'AI 超级智能体 · ReAct 可视化',
+      title: 'LightManus-多工具AI智能体平台',
       description: '基于 ReAct 推理框架的 AI Agent 对话平台。前端实时可视化 Thought → Action → Observation 循环，支持 MCP 工具调用与 RAG 知识库检索。',
       requiresAuth: true
     }
@@ -17,7 +17,7 @@ const routes = [
     name: 'Login',
     component: () => import('../views/Login.vue'),
     meta: {
-      title: '登录 - AI 超级智能体',
+      title: '登录 - LightManus',
       public: true
     }
   },

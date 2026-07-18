@@ -151,8 +151,8 @@ import { useUserStore } from '../stores/userStore'
 import { useChatStore } from '../stores/chatStore'
 
 useHead({
-  title: '登录 - AI 超级智能体',
-  meta: [{ name: 'description', content: '登录或注册以使用 AI 超级智能体' }]
+  title: '登录 - LightManus',
+  meta: [{ name: 'description', content: '登录或注册以使用 LightManus 多工具 AI 智能体' }]
 })
 
 const router = useRouter()

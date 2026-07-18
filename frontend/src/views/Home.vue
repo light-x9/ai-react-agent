@@ -122,7 +122,7 @@ const userStore = useUserStore()
 const currentYear = computed(() => new Date().getFullYear())
 
 useHead({
-  title: 'AI 超级智能体 · ReAct 可视化',
+  title: 'LightManus-多工具AI智能体平台',
   meta: [
     {
       name: 'description',
