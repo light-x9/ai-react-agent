@@ -23,7 +23,8 @@ spring:
     mcp:
       client:
         stdio:
-          servers-configuration: classpath:mcp-servers.json
+          # 生产环境使用外部配置文件（避免打包进 JAR 的 Windows 路径）
+          servers-configuration: file:${MCP_SERVERS_CONFIG:classpath:mcp-servers.json}
 
 # ---- 外部 API 密钥 ----
 serper:
