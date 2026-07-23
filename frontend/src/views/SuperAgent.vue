@@ -3,8 +3,8 @@
     <SessionSidebar ref="sidebarRef" @persona-action="handlePersonaAction" />
     <!-- 移动端遮罩层：点击收起侧边栏 -->
     <div v-if="drawerOpen" class="drawer-overlay" @click="closeDrawer" aria-hidden="true"></div>
-    <!-- 管理知识库 — 页面右上角 -->
-    <button class="header-btn manage-btn" @click="openManageDialog" title="上传 / 管理知识库文档">
+    <!-- 管理知识库 — 页面右上角浮标（PC端定位，移动端响应式调整） -->
+    <button class="manage-btn" @click="openManageDialog" title="上传 / 管理知识库文档">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
         <polyline points="14 2 14 8 20 8" />
@@ -1648,12 +1648,29 @@ onBeforeUnmount(() => {
   box-shadow: 0 2px 8px rgba(37, 99, 235,0.08);
 }
 
-/* 管理知识库 — 页面右上角浮标 */
+/* 管理知识库 — 页面右上角浮标（PC 端绝对定位，不影响标题居中） */
 .manage-btn {
   position: absolute;
   top: 14px;
   right: 24px;
   z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--bg-base);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+  cursor: pointer;
+}
+.manage-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--accent);
+  border-color: var(--border-active);
+  box-shadow: 0 2px 8px rgba(37, 99, 235,0.08);
 }
 
 .spinner {
@@ -2243,14 +2260,13 @@ onBeforeUnmount(() => {
 }
 
 /* =============================================
-   移动端响应式适配（≤768px 平板 / ≤488px 手机）
+   移动端响应式适配（≤768px 平板 / ≤480px 手机）
    ============================================= */
 @media (max-width: 768px) {
   .hamburger-btn { display: inline-flex; }
   .header { padding: 12px 16px; }
   .title { font-size: 0.9375rem; }
   .chat-area { padding: 12px; }
-  .header-center { max-width: 70%; }
 
   /* 侧边栏收起为抽屉（:deep 穿透子组件 scoped） */
   :deep(.session-sidebar) {
@@ -2282,7 +2298,7 @@ onBeforeUnmount(() => {
 
   /* 管理知识库按钮：移动端只保留图标，避免挤占 */
   .manage-btn span { display: none; }
-  .manage-btn { padding: 8px; top: 12px; right: 16px; }
+  .manage-btn { padding: 8px; }
 
   /* 弹窗宽度 */
   .modal-dialog { width: 95%; max-width: 95%; }

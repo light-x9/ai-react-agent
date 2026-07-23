@@ -1080,13 +1080,34 @@ defineExpose({ refreshUsage })
 @media (max-width: 768px) {
   /* 移动端打开的侧边栏内，会话列表保持可滚动 */
   .session-list { padding: 6px; }
+
   /* hover 浮出操作按钮在移动端改为常驻显示（触屏无 hover） */
-  .session-actions { display: flex; opacity: 0.6; }
-  .session-actions .session-action-btn { width: 28px; height: 28px; }
+  .session-actions { display: flex; opacity: 0.7; }
+  .session-actions .session-action-btn { width: 32px; height: 32px; }
+
+  /* 用量面板：移动端常驻显示（触屏无法 hover） */
+  .usage-box {
+    max-height: 80px;
+    opacity: 1;
+    margin-bottom: 8px;
+    padding: 10px 12px;
+    pointer-events: auto;
+  }
+
+  /* 用户操作按钮：移动端常驻显示 */
+  .user-actions {
+    max-width: 80px;
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 @media (max-width: 480px) {
   .sidebar-header { padding: 10px; }
   .user-box { padding: 4px 2px; }
+
+  /* 会话项触控区域加大 */
+  .session-item { padding: 12px; }
+  .session-actions .session-action-btn { width: 30px; height: 30px; }
 }
 </style>

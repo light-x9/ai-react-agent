@@ -411,13 +411,30 @@ const goSuperAgent = () => router.push(userStore.isLoggedIn ? '/super-agent' : '
 
 /* ---------- 响应式 ---------- */
 @media (max-width: 768px) {
+  .home { padding: 0 16px; }
   .hero { padding: 64px 0 56px; }
+  .hero-title { font-size: clamp(2rem, 8vw, 2.5rem); }
   .features { grid-template-columns: 1fr; gap: 16px; padding-bottom: 56px; }
   .cta-card-inner { padding: 24px 20px; }
+  .cta { max-width: 100%; }
 }
 @media (max-width: 480px) {
+  .home { padding: 0 12px; }
   .hero { padding: 48px 0 40px; }
-  .hero-subtitle { font-size: 0.9375rem; }
-  .feature { padding: 24px 20px; }
+  .hero-badge { margin-bottom: 20px; }
+  .loop-svg { width: 120px; height: 48px; }
+  .hero-title { font-size: clamp(1.75rem, 7vw, 2rem); }
+  .hero-subtitle { font-size: 0.875rem; line-height: 1.6; }
+  .tech-tags { gap: 8px; }
+  .tech-tag { font-size: 0.75rem; padding: 5px 12px; }
+  .feature { padding: 20px 16px; }
+  .feature-icon { width: 36px; height: 36px; }
+  .feature-title { font-size: 0.9375rem; }
+  .feature-text { font-size: 0.8125rem; }
+  .cta-card-inner { padding: 20px 16px; }
+  .cta-label { font-size: 1.125rem; }
+  .cta-arrow { width: 36px; height: 36px; }
+  .footer { padding: 16px 0; }
+  .footer small { font-size: 0.75rem; }
 }
 </style>

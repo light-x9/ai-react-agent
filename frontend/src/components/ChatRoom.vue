@@ -620,6 +620,7 @@ onMounted(() => {
   margin: auto;
   animation: fadeUp 0.5s ease-out;
   max-width: 640px;
+  width: 100%;
 }
 
 .welcome-title {
@@ -654,7 +655,7 @@ onMounted(() => {
 .suggestion-chip {
   font-family: var(--font-body);
   font-size: 0.875rem;
-  padding: 10px 20px;
+  padding: 10px 16px;
   border-radius: 12px;
   background: var(--bg-elevated);
   color: var(--text-secondary);
@@ -663,8 +664,8 @@ onMounted(() => {
   transition: background 0.2s, border-color 0.2s, transform 0.15s, box-shadow 0.2s;
   line-height: 1.4;
   text-align: center;
-  min-width: 140px;
-  max-width: 280px;
+  flex: 1 1 calc(50% - 10px);
+  max-width: 100%;
 }
 
 .suggestion-chip:hover {
@@ -1571,6 +1572,8 @@ onMounted(() => {
 }
 
 @media (max-width: 768px) {
+  .chat-messages { padding: 16px; }
+
   /* 气泡：窄屏下放宽到 90%，避免过窄 */
   .message { max-width: 90%; }
   .ai-message-body { max-width: 90%; }
@@ -1610,9 +1613,19 @@ onMounted(() => {
 
   /* 图表卡片：移动端取消最小宽度限制 */
   .chart-cards { min-width: 0; }
+
+  /* 欢迎面板 */
+  .welcome-panel { padding: 32px 16px 24px; }
+  .welcome-title { font-size: 1.25rem; }
+  .welcome-desc { font-size: 0.875rem; }
+
+  /* 建议按钮：两列布局 */
+  .suggestion-chip { flex: 1 1 calc(50% - 10px); padding: 10px 12px; font-size: 0.8125rem; }
 }
 
 @media (max-width: 480px) {
+  .chat-messages { padding: 12px; }
+
   .avatar { width: 32px; height: 32px; }
   .message-bubble { padding: 10px 14px; }
   .message-content { font-size: 0.8125rem; }
@@ -1643,6 +1656,9 @@ onMounted(() => {
   /* 附件 chip 适配 */
   .attachment-chip { margin: 6px 12px 0; max-width: calc(100% - 24px); }
   .attachment-name { max-width: 120px; }
+
+  /* 建议按钮：小屏幕单列 */
+  .suggestion-chip { flex: 1 1 100%; padding: 10px 12px; }
 }
 
 /* ---------- 对话附件 chip ---------- */
