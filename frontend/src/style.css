@@ -239,3 +239,52 @@ button:focus-visible {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0,0,0,0.2);
 }
+
+/* =============================================
+   全局移动端友好样式
+   ============================================= */
+
+/* 防止iOS横屏字号跳动 */
+body {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* 安全区域适配（刘海屏/圆角屏） */
+#app {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* 全局平滑滚动 */
+html {
+  scroll-behavior: smooth;
+}
+
+/* 触控优化：移除移动端点击高亮延迟 */
+a, button, input, textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 防止内容溢出导致横向滚动 */
+img, video, iframe, table, pre {
+  max-width: 100%;
+}
+
+/* 移动端输入框最小字号防止iOS缩放（≥16px 不触发自动缩放） */
+@media (max-width: 768px) {
+  input, textarea, select {
+    font-size: 16px;
+  }
+}
+
+/* 移动端断点：≤768px 平板 */
+@media (max-width: 768px) {
+  /* 全局字号微调 */
+  html { font-size: 15px; }
+}
+
+/* 移动端断点：≤480px 手机 */
+@media (max-width: 480px) {
+  html { font-size: 14px; }
+}
